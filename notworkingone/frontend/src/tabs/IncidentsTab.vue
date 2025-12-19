@@ -48,7 +48,7 @@
         <div class="stat-icon">📊</div>
         <div class="stat-info">
           <div class="stat-value">{{ stats.total }}</div>
-          <div class="stat-label">Total Today</div>
+          <div class="stat-label">Total Incidents</div>
         </div>
       </div>
     </div>
@@ -240,20 +240,11 @@ const actionData = ref({
 })
 
 const stats = computed(() => {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  
-  const todayIncidents = incidents.value.filter(i => {
-    const detectedDate = new Date(i.detected_at)
-    detectedDate.setHours(0, 0, 0, 0)
-    return detectedDate.getTime() === today.getTime()
-  })
-  
   return {
     pending: incidents.value.filter(i => i.status === 'pending').length,
     responding: incidents.value.filter(i => i.status === 'responding').length,
     resolved: incidents.value.filter(i => i.status === 'resolved').length,
-    total: todayIncidents.length
+    total: incidents.value.length
   }
 })
 

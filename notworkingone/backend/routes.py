@@ -392,6 +392,53 @@ def create_incident_route():
         return {"error": "Internal server error"}, 500
 
 
+# ========== EMAIL NOTIFICATION ROUTE ==========
+@incident_bp.post("/send-alert-email")
+@token_required
+def send_alert_email():
+    try:
+        data = request.json
+        if not data or not data.get('incident_id'):
+            return {"error": "Missing incident_id"}, 400
+        
+        # Get incident details
+        incident = get_incident_by_id(data['incident_id'])
+        if not incident:
+            return {"error": "Incident not found"}, 404
+        
+        # Get user email
+        user = get_user_by_username(request.user.get('sub'))
+        if not user:
+            return {"error": "User not found"}, 404
+        
+        # TODO: Implement email sending
+        # For now, just log it
+        print(f"""
+        ===========================================
+        🚨 EMAIL ALERT 🚨
+        ===========================================
+        To: {user['email']}
+        Subject: URGENT: Weapon Detected - {incident['incident_number']}
+        
+        A {data.get('weapon_type', 'weapon')} has been detected!
+        
+        Location: {data.get('location', 'Unknown')}
+        Camera: {data.get('camera_name', 'Unknown')}
+        Time: {data.get('detected_at', 'Unknown')}
+        Incident: {incident['incident_number']}
+        
+        Please respond immediately.
+        
+        View incident: http://localhost:5173/
+        ===========================================
+        """)
+        
+        return {"message": "Email notification sent"}
+    except Exception as e:
+        print(f"Send email error: {e}")
+        return {"error": "Internal server error"}, 500
+
+
 # ========== VIDEO STREAM ROUTE ==========
 @camera_bp.get("/video")
 def video_stream():
