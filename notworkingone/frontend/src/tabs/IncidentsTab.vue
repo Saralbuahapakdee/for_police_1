@@ -61,7 +61,7 @@
       </div>
       <div v-else class="incident-cards">
         <div v-for="incident in incidents" :key="incident.id" 
-             :class="['incident-card', incident.status, incident.priority]"
+             :class="['incident-card', incident.status]"
              @click="selectIncident(incident)">
           <div class="incident-header-row">
             <div class="incident-number">{{ incident.incident_number }}</div>
@@ -94,10 +94,6 @@
               <span class="value">{{ incident.assigned_to_username }}</span>
             </div>
           </div>
-          
-          <div :class="['priority-indicator', incident.priority]" 
-               :title="formatPriority(incident.priority)">
-          </div>
         </div>
       </div>
     </div>
@@ -118,12 +114,6 @@
                 <label>Status:</label>
                 <span :class="['status-badge', selectedIncident.status]">
                   {{ formatStatus(selectedIncident.status) }}
-                </span>
-              </div>
-              <div class="detail-item">
-                <label>Priority:</label>
-                <span :class="['priority-badge', selectedIncident.priority]">
-                  {{ formatPriority(selectedIncident.priority) }}
                 </span>
               </div>
               <div class="detail-item">
@@ -365,15 +355,6 @@ function formatStatus(status) {
   return map[status] || status
 }
 
-function formatPriority(priority) {
-  const map = {
-    'low': 'Low Priority',
-    'medium': 'Medium Priority',
-    'high': 'High Priority'
-  }
-  return map[priority] || priority
-}
-
 function formatWeaponName(weaponType) {
   const names = {
     'knife': 'Knife',
@@ -511,7 +492,7 @@ function formatDateTime(dateTimeString) {
   background: #f8f9fa;
   padding: 18px;
   border-radius: 10px;
-  border-left: 4px solid #ddd;
+  border-left: 4px solid #e74c3c;
   cursor: pointer;
   transition: all 0.3s ease;
   position: relative;
@@ -523,12 +504,17 @@ function formatDateTime(dateTimeString) {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.incident-card.pending { border-left-color: #e74c3c; }
-.incident-card.responding { border-left-color: #f39c12; }
-.incident-card.resolved { border-left-color: #27ae60; }
-
-.incident-card.high {
+.incident-card.pending { 
+  border-left-color: #e74c3c;
   box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.2);
+}
+
+.incident-card.responding { 
+  border-left-color: #f39c12; 
+}
+
+.incident-card.resolved { 
+  border-left-color: #27ae60; 
 }
 
 .incident-header-row {
@@ -612,19 +598,6 @@ function formatDateTime(dateTimeString) {
   background: #f3e5f5;
   color: #9b59b6;
 }
-
-.priority-indicator {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.priority-indicator.high { background: #e74c3c; }
-.priority-indicator.medium { background: #f39c12; }
-.priority-indicator.low { background: #95a5a6; }
 
 /* Modal Styles */
 .modal-overlay {
@@ -801,28 +774,6 @@ function formatDateTime(dateTimeString) {
   color: #27ae60;
   border-radius: 8px;
   font-weight: 600;
-}
-
-.priority-badge {
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-.priority-badge.high {
-  background: #fee;
-  color: #e74c3c;
-}
-
-.priority-badge.medium {
-  background: #fff3cd;
-  color: #f39c12;
-}
-
-.priority-badge.low {
-  background: #e9ecef;
-  color: #95a5a6;
 }
 
 @media (max-width: 768px) {

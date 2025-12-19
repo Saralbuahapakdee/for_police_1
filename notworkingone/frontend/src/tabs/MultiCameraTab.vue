@@ -3,11 +3,14 @@
     <div class="camera-grid-header">
       <h3>📹 Multi-Camera View</h3>
       <div class="header-controls">
-        <select v-model="gridSize" class="grid-select">
+        <select v-if="!isFullView" v-model="gridSize" class="grid-select">
           <option value="2x2">2x2 Grid (4 cameras)</option>
           <option value="3x3">3x3 Grid (9 cameras)</option>
           <option value="2x3">2x3 Grid (6 cameras)</option>
         </select>
+        <button v-if="isFullView" @click="exitFullView" class="exit-full-btn">
+          ← Back to Grid View
+        </button>
       </div>
     </div>
 
@@ -24,10 +27,11 @@
     </div>
 
     <!-- Camera Grid -->
-    <div :class="['camera-grid', `grid-${gridSize}`]" ref="gridContainer">
+    <div :class="['camera-grid', `grid-${gridSize}`, { 'full-view': isFullView }]" ref="gridContainer">
       <div v-for="camera in displayedCameras" :key="camera.id" 
-           :class="['camera-cell', { 'has-incident': hasRecentIncident(camera.id), 'focused': focusedCamera === camera.id }]"
-           @click="toggleFocus(camera.id)">
+           :class="['camera-cell', { 'has-incident': hasRecentIncident(camera.id) }]"
+           @click="toggleFocus(camera.id)"
+           :title="isFullView ? 'Click to return to grid view' : 'Click to view full screen'">
         <div class="camera-header-bar">
           <span class="camera-name">{{ camera.camera_name }}</span>
           <span v-if="hasRecentIncident(camera.id)" class="incident-badge">
@@ -57,6 +61,7 @@ const cameras = ref([])
 const incidents = ref([])
 const gridSize = ref('2x2')
 const focusedCamera = ref(null)
+const isFullView = ref(false)
 const latestIncident = ref(null)
 const isFullscreen = ref(false)
 const gridContainer = ref(null)
@@ -66,6 +71,11 @@ let refreshInterval = null
 let notificationPermission = 'default'
 
 const displayedCameras = computed(() => {
+  // If in full view mode, show only the focused camera
+  if (isFullView.value && focusedCamera.value) {
+    return cameras.value.filter(c => c.id === focusedCamera.value)
+  }
+  
   const maxCameras = {
     '2x2': 4,
     '2x3': 6,
@@ -242,7 +252,20 @@ function focusCamera(cameraId) {
 }
 
 function toggleFocus(cameraId) {
-  focusCamera(cameraId)
+  if (isFullView.value && focusedCamera.value === cameraId) {
+    // Exit full view mode
+    isFullView.value = false
+    focusedCamera.value = null
+  } else {
+    // Enter full view mode
+    isFullView.value = true
+    focusedCamera.value = cameraId
+  }
+}
+
+function exitFullView() {
+  isFullView.value = false
+  focusedCamera.value = null
 }
 
 function toggleFullscreen() {
@@ -308,6 +331,22 @@ function formatTime(timeString) {
   border-radius: 6px;
   background: white;
   cursor: pointer;
+}
+
+.exit-full-btn {
+  padding: 8px 16px;
+  background: #4a90e2;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: all 0.3s ease;
+}
+
+.exit-full-btn:hover {
+  background: #357ab7;
+  transform: translateX(-2px);
 }
 
 /* Alert Banner */
@@ -388,6 +427,19 @@ function formatTime(timeString) {
   flex: 1;
 }
 
+.camera-grid.full-view {
+  display: flex;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.camera-grid.full-view .camera-cell {
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+}
+
 .camera-grid.grid-2x2 {
   grid-template-columns: repeat(2, 1fr);
   grid-template-rows: repeat(2, 1fr);
@@ -411,6 +463,13 @@ function formatTime(timeString) {
   cursor: pointer;
   transition: all 0.3s ease;
   border: 3px solid transparent;
+  min-height: 200px;
+}
+
+.full-view .camera-cell {
+  min-height: 100%;
+  border-radius: 12px;
+  border: none;
 }
 
 .camera-cell:hover {
@@ -429,12 +488,6 @@ function formatTime(timeString) {
   50% { border-color: #c0392b; }
 }
 
-.camera-cell.focused {
-  grid-column: span 2;
-  grid-row: span 2;
-  z-index: 10;
-}
-
 .camera-header-bar {
   position: absolute;
   top: 0;
@@ -448,10 +501,18 @@ function formatTime(timeString) {
   z-index: 2;
 }
 
+.full-view .camera-header-bar {
+  padding: 20px 30px;
+}
+
 .camera-name {
   color: white;
   font-weight: 600;
   font-size: 0.9rem;
+}
+
+.full-view .camera-name {
+  font-size: 1.5rem;
 }
 
 .incident-badge {
@@ -488,15 +549,27 @@ function formatTime(timeString) {
   z-index: 2;
 }
 
+.full-view .camera-info-bar {
+  padding: 20px 30px;
+}
+
 .camera-location {
   color: white;
   font-size: 0.8rem;
+}
+
+.full-view .camera-location {
+  font-size: 1.2rem;
 }
 
 .camera-status {
   color: #2ecc71;
   font-size: 0.8rem;
   font-weight: 600;
+}
+
+.full-view .camera-status {
+  font-size: 1.1rem;
 }
 
 /* Incidents Sidebar */
@@ -586,11 +659,6 @@ function formatTime(timeString) {
   .camera-grid.grid-2x3 {
     grid-template-columns: 1fr;
     grid-template-rows: auto;
-  }
-  
-  .camera-cell.focused {
-    grid-column: span 1;
-    grid-row: span 1;
   }
 }
 </style>
