@@ -8,9 +8,6 @@
           <option value="3x3">3x3 Grid (9 cameras)</option>
           <option value="2x3">2x3 Grid (6 cameras)</option>
         </select>
-        <button @click="toggleFullscreen" class="fullscreen-btn">
-          {{ isFullscreen ? '🗗 Exit Fullscreen' : '⛶ Fullscreen' }}
-        </button>
       </div>
     </div>
 
@@ -22,9 +19,6 @@
           <strong>WEAPON DETECTED!</strong>
           <span>{{ formatWeaponName(latestIncident.weapon_type) }} at {{ latestIncident.camera_name }}</span>
         </div>
-        <button @click="focusCamera(latestIncident.camera_id)" class="alert-action">
-          View Camera
-        </button>
         <button @click="dismissAlert" class="alert-dismiss">✕</button>
       </div>
     </div>
@@ -314,20 +308,6 @@ function formatTime(timeString) {
   border-radius: 6px;
   background: white;
   cursor: pointer;
-}
-
-.fullscreen-btn {
-  padding: 8px 16px;
-  background: #3498db;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-}
-
-.fullscreen-btn:hover {
-  background: #2980b9;
 }
 
 /* Alert Banner */
