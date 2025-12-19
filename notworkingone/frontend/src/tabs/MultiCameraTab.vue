@@ -49,27 +49,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Recent Incidents Sidebar -->
-    <div class="incidents-sidebar">
-      <h4>🚨 Recent Detections</h4>
-      <div v-if="recentIncidents.length === 0" class="no-incidents">
-        No recent detections
-      </div>
-      <div v-else class="incident-list">
-        <div v-for="incident in recentIncidents.slice(0, 5)" :key="incident.id" 
-             class="incident-item"
-             @click="focusCamera(incident.camera_id)">
-          <div class="incident-time">{{ formatTime(incident.detected_at) }}</div>
-          <div class="incident-details">
-            <span :class="['weapon-badge', incident.weapon_type]">
-              {{ formatWeaponName(incident.weapon_type) }}
-            </span>
-            <span class="incident-camera">{{ incident.camera_name }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
