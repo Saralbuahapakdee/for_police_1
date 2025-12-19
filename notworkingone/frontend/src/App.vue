@@ -53,12 +53,29 @@
       :user-data="userData"
       @logout="handleLogout"
     />
+
+    <!-- Global Detection Alert Banner (Shows on all pages when logged in) -->
+    <div v-if="token && currentDetection.detected && hasObjects" class="global-alert-banner">
+      <div class="alert-content">
+        <div class="alert-icon">🚨</div>
+        <div class="alert-info">
+          <strong>WEAPON DETECTED!</strong>
+          <span>
+            <span v-for="(data, weaponType) in currentDetection.objects" :key="weaponType">
+              {{ formatWeaponName(weaponType) }} ({{ data.count }})
+            </span>
+          </span>
+        </div>
+        <div class="alert-time">{{ formatTime(currentDetection.timestamp) }}</div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import MainApp from './components/MainApp.vue'
+import detectionService from './services/detectionService.js'
 
 const token = ref('')
 const userData = ref({
@@ -76,6 +93,19 @@ const loginData = ref({
   password: ''
 })
 
+// Detection state
+const currentDetection = ref({
+  detected: false,
+  objects: {},
+  timestamp: null
+})
+
+let unsubscribeDetection = null
+
+const hasObjects = computed(() => {
+  return Object.keys(currentDetection.value.objects || {}).length > 0
+})
+
 onMounted(() => {
   const savedToken = localStorage.getItem('authToken')
   if (savedToken) {
@@ -86,8 +116,43 @@ onMounted(() => {
       role: localStorage.getItem('userRole') || '',
       userId: parseInt(localStorage.getItem('userId')) || null
     }
+    
+    // Start detection service when user is logged in
+    startDetectionService()
+  }
+
+  // Request notification permission
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission()
   }
 })
+
+onUnmounted(() => {
+  stopDetectionService()
+})
+
+function startDetectionService() {
+  // Subscribe to detection updates
+  unsubscribeDetection = detectionService.subscribe((state) => {
+    currentDetection.value = state.currentDetection
+  })
+  
+  // Start polling
+  detectionService.startPolling(token.value)
+  
+  console.log('✅ Global detection service started')
+}
+
+function stopDetectionService() {
+  if (unsubscribeDetection) {
+    unsubscribeDetection()
+    unsubscribeDetection = null
+  }
+  
+  detectionService.stopPolling()
+  
+  console.log('🛑 Global detection service stopped')
+}
 
 function clearError() {
   errorMessage.value = ''
@@ -128,6 +193,9 @@ async function login() {
       localStorage.setItem('userId', data.user_id)
       
       loginData.value = { username: '', password: '' }
+      
+      // Start detection service after successful login
+      startDetectionService()
     } else {
       errorMessage.value = data.error || 'Invalid credentials'
     }
@@ -140,6 +208,8 @@ async function login() {
 }
 
 function handleLogout() {
+  stopDetectionService()
+  
   token.value = ''
   userData.value = { username: '', fullName: '', role: '', userId: null }
   
@@ -148,6 +218,26 @@ function handleLogout() {
   localStorage.removeItem('userFullName')
   localStorage.removeItem('userRole')
   localStorage.removeItem('userId')
+}
+
+function formatWeaponName(weaponType) {
+  const names = {
+    'gun': 'Gun/Pistol',
+    'heavy-weapon': 'Heavy Weapon',
+    'heavy_weapon': 'Heavy Weapon',
+    'knife': 'Knife',
+    'pistol': 'Pistol'
+  }
+  return names[weaponType] || weaponType.replace('-', ' ').replace('_', ' ')
+}
+
+function formatTime(timestamp) {
+  if (!timestamp) return ''
+  try {
+    return new Date(timestamp).toLocaleTimeString()
+  } catch {
+    return ''
+  }
 }
 </script>
 
@@ -293,6 +383,84 @@ body {
   font-weight: 600;
 }
 
+/* Global Alert Banner */
+.global-alert-banner {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  min-width: 400px;
+  max-width: 90vw;
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  color: white;
+  padding: 15px 20px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(231, 76, 60, 0.4);
+  animation: slideDown 0.3s ease-out, pulse 2s ease-in-out infinite;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { 
+    box-shadow: 0 8px 24px rgba(231, 76, 60, 0.4);
+  }
+  50% { 
+    box-shadow: 0 8px 32px rgba(231, 76, 60, 0.6);
+  }
+}
+
+.alert-content {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.alert-icon {
+  font-size: 2rem;
+  animation: shake 0.5s ease-in-out infinite;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px) rotate(-5deg); }
+  75% { transform: translateX(3px) rotate(5deg); }
+}
+
+.alert-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.alert-info strong {
+  font-size: 1.1rem;
+  letter-spacing: 0.5px;
+}
+
+.alert-info span {
+  font-size: 0.95rem;
+  opacity: 0.95;
+}
+
+.alert-time {
+  font-size: 0.85rem;
+  opacity: 0.9;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 @media (max-width: 768px) {
   .login-card {
     max-width: 100%;
@@ -304,6 +472,15 @@ body {
   
   .badge-icon {
     font-size: 3rem;
+  }
+  
+  .global-alert-banner {
+    min-width: 90vw;
+    top: 10px;
+  }
+  
+  .alert-content {
+    flex-wrap: wrap;
   }
 }
 </style>
