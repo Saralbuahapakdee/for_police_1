@@ -18,6 +18,19 @@ dashboard_bp = Blueprint('dashboard', __name__)
 incident_bp = Blueprint('incident', __name__)
 admin_bp = Blueprint('admin', __name__)
 
+# Weapon type mapping from MQTT to database format
+WEAPON_TYPE_MAP = {
+    'gun': 'pistol',
+    'heavy-weapon': 'heavy_weapon',
+    'knife': 'knife',
+    'pistol': 'pistol',
+    'heavy_weapon': 'heavy_weapon'
+}
+
+def normalize_weapon_type(weapon_type):
+    """Normalize weapon type from MQTT to database format"""
+    return WEAPON_TYPE_MAP.get(weapon_type.lower(), weapon_type.lower())
+
 # ========== AUTH ROUTES ==========
 @auth_bp.post("/login")
 def login():
@@ -401,18 +414,14 @@ def send_alert_email():
         if not data or not data.get('incident_id'):
             return {"error": "Missing incident_id"}, 400
         
-        # Get incident details
         incident = get_incident_by_id(data['incident_id'])
         if not incident:
             return {"error": "Incident not found"}, 404
         
-        # Get user email
         user = get_user_by_username(request.user.get('sub'))
         if not user:
             return {"error": "User not found"}, 404
         
-        # TODO: Implement email sending
-        # For now, just log it
         print(f"""
         ===========================================
         🚨 EMAIL ALERT 🚨
@@ -439,7 +448,7 @@ def send_alert_email():
         return {"error": "Internal server error"}, 500
 
 
-# ========== VIDEO STREAM ROUTE ==========
+# ========== VIDEO STREAM ROUTE WITH MQTT DETECTION ==========
 @camera_bp.get("/video")
 def video_stream():
     try:
@@ -451,25 +460,54 @@ def video_stream():
 
         user_data = verify_token(token)
         
-        # Random detection simulation (10% chance)
-        if user_data and random.random() < 0.1:
-            weapons = DEFAULT_WEAPONS
-            weapon = random.choice(weapons)
-            confidence = random.uniform(0.7, 0.95)
-            detection_id = log_detection(user_data.get('user_id'), camera_id, weapon, confidence)
-            
-            # Auto-create incident for high-confidence detections
-            if confidence >= 0.80:
-                from database import get_db_connection
-                with get_db_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute('SELECT location FROM cameras WHERE id = ?', (camera_id,))
-                    row = cursor.fetchone()
-                    location = row['location'] if row else 'Unknown'
+        # Check for real-time detections from AI service
+        try:
+            detection_response = requests.get(f"{AI_STREAM_URL.replace('/stream', '/detection')}", timeout=1)
+            if detection_response.ok:
+                detection_data = detection_response.json()
                 
-                create_incident(camera_id, weapon, detection_id, user_data.get('user_id'), 
-                              location, f"Automatic incident from {weapon} detection")
+                if detection_data.get('detected') and detection_data.get('objects'):
+                    # Process each detected weapon
+                    for weapon_type, data in detection_data['objects'].items():
+                        count = data.get('count', 0)
+                        confidences = data.get('confidences', [])
+                        
+                        if count > 0 and confidences:
+                            # Normalize weapon type
+                            normalized_weapon = normalize_weapon_type(weapon_type)
+                            avg_confidence = sum(confidences) / len(confidences)
+                            
+                            # Log detection
+                            detection_id = log_detection(
+                                user_data.get('user_id'), 
+                                camera_id, 
+                                normalized_weapon, 
+                                avg_confidence
+                            )
+                            
+                            # Auto-create incident for high-confidence detections
+                            if avg_confidence >= 0.80:
+                                from database import get_db_connection
+                                with get_db_connection() as conn:
+                                    cursor = conn.cursor()
+                                    cursor.execute('SELECT location FROM cameras WHERE id = ?', (camera_id,))
+                                    row = cursor.fetchone()
+                                    location = row['location'] if row else 'Unknown'
+                                
+                                create_incident(
+                                    camera_id, 
+                                    normalized_weapon, 
+                                    detection_id, 
+                                    user_data.get('user_id'), 
+                                    location, 
+                                    f"Automatic incident from {normalized_weapon} detection (confidence: {avg_confidence*100:.1f}%)"
+                                )
+                                
+                                print(f"🚨 Incident created for {normalized_weapon} detection with {avg_confidence*100:.1f}% confidence")
+        except Exception as e:
+            print(f"Error checking AI detection: {e}")
 
+        # Proxy video stream
         r = requests.get(AI_STREAM_URL, stream=True)
         return Response(r.iter_content(chunk_size=1024),
                         content_type=r.headers.get("Content-Type", "multipart/x-mixed-replace; boundary=frame"))
