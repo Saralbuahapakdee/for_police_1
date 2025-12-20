@@ -181,8 +181,16 @@ def create_incident(camera_id, weapon_type, detection_id, created_by, location, 
         return incident_id
 
 
-def get_incidents(status=None, assigned_to=None, limit=100):
-    """Get incidents with filters"""
+def get_incidents(status=None, assigned_to=None, limit=100, officer_view=False):
+    """Get incidents with filters
+    
+    Args:
+        status: Filter by status
+        assigned_to: For officers (officer_view=True), this is the officer's user_id
+                    For admins (officer_view=False), this is optional filter
+        limit: Max results
+        officer_view: If True, return only incidents for the officer (assigned or unassigned)
+    """
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
@@ -201,13 +209,18 @@ def get_incidents(status=None, assigned_to=None, limit=100):
         
         params = []
         
+        # Officer view: only show their assignments or unassigned incidents
+        if officer_view and assigned_to:
+            query += ' AND (i.assigned_to = ? OR i.assigned_to IS NULL)'
+            params.append(assigned_to)
+        # Admin view with optional filter
+        elif not officer_view and assigned_to:
+            query += ' AND i.assigned_to = ?'
+            params.append(assigned_to)
+        
         if status:
             query += ' AND i.status = ?'
             params.append(status)
-        
-        if assigned_to:
-            query += ' AND i.assigned_to = ?'
-            params.append(assigned_to)
         
         query += ' ORDER BY i.detected_at DESC LIMIT ?'
         params.append(limit)

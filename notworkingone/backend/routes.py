@@ -356,7 +356,18 @@ def get_incidents_route():
         assigned_to = request.args.get('assigned_to', type=int)
         limit = request.args.get('limit', 100, type=int)
         
-        incidents_list = get_incidents(status, assigned_to, limit)
+        user_id = request.user.get('user_id')
+        user_role = request.user.get('role')
+        
+        # For officers: only show incidents assigned to them or unassigned
+        # For admins: show all incidents (or filtered by assigned_to if specified)
+        if user_role == 'officer':
+            # Officers can only see their own assignments or unassigned incidents
+            incidents_list = get_incidents(status, user_id, limit, officer_view=True)
+        else:
+            # Admins can see all incidents
+            incidents_list = get_incidents(status, assigned_to, limit, officer_view=False)
+        
         return {"incidents": [dict(inc) for inc in incidents_list]}
     except Exception as e:
         print(f"Get incidents error: {e}")
@@ -390,13 +401,32 @@ def update_incident_route(incident_id):
             return {"error": "Missing update data"}, 400
         
         user_id = request.user.get('user_id')
+        user_role = request.user.get('role')
         
+        # Get the incident to check permissions
+        incident = get_incident_by_id(incident_id)
+        if not incident:
+            return {"error": "Incident not found"}, 404
+        
+        # Permission check for officers
+        if user_role == 'officer':
+            # Officers can only update incidents assigned to them or unassigned incidents
+            if incident['assigned_to'] is not None and incident['assigned_to'] != user_id:
+                return {"error": "You can only update incidents assigned to you or unassigned incidents"}, 403
+            
+            # When officer takes action on unassigned incident, auto-assign to them
+            if incident['assigned_to'] is None and 'status' in data:
+                data['assigned_to'] = user_id
+        
+        # Update the incident
         if update_incident(incident_id, user_id, data):
             return {"message": "Incident updated successfully"}
         else:
             return {"error": "Failed to update incident"}, 500
     except Exception as e:
         print(f"Update incident error: {e}")
+        import traceback
+        traceback.print_exc()
         return {"error": "Internal server error"}, 500
 
 
