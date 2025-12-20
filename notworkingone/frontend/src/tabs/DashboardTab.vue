@@ -395,7 +395,7 @@ function getConfidenceLabel(score) {
 .dashboard-tab {
   display: flex;
   flex-direction: column;
-  gap: 25px;
+  gap: 20px;
 }
 
 .dashboard-header {
@@ -460,7 +460,7 @@ function getConfidenceLabel(score) {
 .dashboard-content {
   display: flex;
   flex-direction: column;
-  gap: 25px;
+  gap: 20px;
 }
 
 .summary-cards {

@@ -321,7 +321,7 @@ function formatDate(dateString) {
 <style scoped>
 .profile-tab {
   background: white;
-  padding: 30px;
+  padding: 20px;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
@@ -333,7 +333,7 @@ function formatDate(dateString) {
 
 .profile-section {
   margin-bottom: 30px;
-  padding: 25px;
+  padding: 20px;
   background: #f8f9fa;
   border-radius: 10px;
 }

@@ -216,7 +216,7 @@ function formatTime(timeString) {
 .stream-tab {
   display: flex;
   flex-direction: column;
-  gap: 25px;
+  gap: 20px;
 }
 
 .camera-selector {
