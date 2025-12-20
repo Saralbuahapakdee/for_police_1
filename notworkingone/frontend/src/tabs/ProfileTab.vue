@@ -67,15 +67,6 @@
           {{ isExporting ? 'Exporting...' : '📥 Export Detection Data' }}
         </button>
       </div>
-
-      <!-- Danger Zone -->
-      <div class="profile-section danger-zone">
-        <h3>Danger Zone</h3>
-        <p class="section-description">Permanently delete your account and all associated data</p>
-        <button @click="showDeleteConfirm = true" class="settings-btn danger">
-          🗑️ Delete Account
-        </button>
-      </div>
     </div>
 
     <!-- Change Password Modal -->
@@ -118,23 +109,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Delete Confirm Modal -->
-    <div v-if="showDeleteConfirm" class="modal-overlay" @click="showDeleteConfirm = false">
-      <div class="modal" @click.stop>
-        <h3>Delete Account</h3>
-        <p>Are you sure you want to delete your account?</p>
-        <p style="color: #e74c3c; font-weight: 600;">
-          This will permanently delete all your detection data and cannot be undone.
-        </p>
-        <div class="modal-actions">
-          <button @click="showDeleteConfirm = false" class="cancel-btn">Cancel</button>
-          <button @click="deleteAccount" class="delete-confirm-btn" :disabled="isDeleting">
-            {{ isDeleting ? 'Deleting...' : 'Yes, Delete My Account' }}
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -171,10 +145,6 @@ const passwordData = ref({
 const passwordError = ref('')
 const passwordSuccess = ref('')
 const isChangingPassword = ref(false)
-
-// Delete account
-const showDeleteConfirm = ref(false)
-const isDeleting = ref(false)
 
 onMounted(() => {
   loadProfile()
@@ -338,32 +308,6 @@ async function changePassword() {
   isChangingPassword.value = false
 }
 
-async function deleteAccount() {
-  isDeleting.value = true
-  
-  try {
-    const res = await fetch('/api/delete-account', {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${props.token}` }
-    })
-    
-    if (res.ok) {
-      showDeleteConfirm.value = false
-      alert('Account deleted successfully. You will be logged out.')
-      // Emit logout event to parent
-      window.location.reload()
-    } else {
-      const data = await res.json()
-      alert(data.error || 'Failed to delete account')
-    }
-  } catch (error) {
-    alert('Network error. Please try again.')
-  }
-  
-  isDeleting.value = false
-  showDeleteConfirm.value = false
-}
-
 function formatDate(dateString) {
   if (!dateString) return 'N/A'
   try {
@@ -502,22 +446,6 @@ function formatDate(dateString) {
   cursor: not-allowed;
 }
 
-.settings-btn.danger {
-  background-color: #e74c3c;
-}
-
-.settings-btn.danger:hover:not(:disabled) {
-  background-color: #c0392b;
-}
-
-.danger-zone {
-  border: 2px solid #e74c3c;
-}
-
-.danger-zone h3 {
-  color: #e74c3c;
-}
-
 /* Modals */
 .modal-overlay {
   position: fixed;
@@ -610,26 +538,6 @@ function formatDate(dateString) {
 }
 
 .confirm-btn:disabled {
-  background-color: #bdc3c7;
-  cursor: not-allowed;
-}
-
-.delete-confirm-btn {
-  padding: 10px 20px;
-  background-color: #e74c3c;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 1rem;
-  transition: background-color 0.3s ease;
-}
-
-.delete-confirm-btn:hover:not(:disabled) {
-  background-color: #c0392b;
-}
-
-.delete-confirm-btn:disabled {
   background-color: #bdc3c7;
   cursor: not-allowed;
 }

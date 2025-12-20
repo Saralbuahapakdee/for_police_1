@@ -24,7 +24,7 @@
           <option :value="60">2 months</option>
           <option :value="90">3 months</option>
           <option :value="180">6 months</option>
-          <option :value="365">1 year</option>
+          <option :value="365">Last year</option>
         </select>
 
         <!-- Custom Date Range -->
@@ -57,11 +57,6 @@
     </div>
 
     <div v-else class="dashboard-content">
-      <!-- Date Range Display -->
-      <div class="date-range-display">
-        <strong>📅 Period:</strong> {{ dateRangeDisplay }}
-      </div>
-
       <!-- Summary Cards -->
       <div class="summary-cards">
         <div class="summary-card">
@@ -466,15 +461,6 @@ function getConfidenceLabel(score) {
   display: flex;
   flex-direction: column;
   gap: 25px;
-}
-
-.date-range-display {
-  background: #e8f4fd;
-  padding: 15px 20px;
-  border-radius: 8px;
-  color: #2c3e50;
-  font-size: 1.1rem;
-  border-left: 4px solid #4a90e2;
 }
 
 .summary-cards {

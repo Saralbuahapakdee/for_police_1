@@ -14,18 +14,6 @@
       </div>
     </div>
 
-    <!-- Alert Banner for New Detections -->
-    <div v-if="latestIncident" class="alert-banner">
-      <div class="alert-content">
-        <div class="alert-icon">🚨</div>
-        <div class="alert-info">
-          <strong>WEAPON DETECTED!</strong>
-          <span>{{ formatWeaponName(latestIncident.weapon_type) }} at {{ latestIncident.camera_name }}</span>
-        </div>
-        <button @click="dismissAlert" class="alert-dismiss">✕</button>
-      </div>
-    </div>
-
     <!-- Camera Grid -->
     <div :class="['camera-grid', `grid-${gridSize}`, { 'full-view': isFullView }]" ref="gridContainer">
       <div v-for="camera in displayedCameras" :key="camera.id" 
@@ -51,7 +39,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, onUnmounted } from 'vue'
 
 const props = defineProps({
   token: String
@@ -62,16 +50,14 @@ const incidents = ref([])
 const gridSize = ref('2x2')
 const focusedCamera = ref(null)
 const isFullView = ref(false)
-const latestIncident = ref(null)
 const isFullscreen = ref(false)
 const gridContainer = ref(null)
 const lastIncidentId = ref(null)
 
-let refreshInterval = null
+let refreshIntervalId = null
 let notificationPermission = 'default'
 
 const displayedCameras = computed(() => {
-  // If in full view mode, show only the focused camera
   if (isFullView.value && focusedCamera.value) {
     return cameras.value.filter(c => c.id === focusedCamera.value)
   }
@@ -90,26 +76,56 @@ const recentIncidents = computed(() => {
 })
 
 onMounted(async () => {
+  console.log('📹 MultiCameraTab MOUNTED - starting polling')
+  
   await loadCameras()
   await loadIncidents()
   
-  // Request notification permission
   if ('Notification' in window) {
     notificationPermission = await Notification.requestPermission()
   }
   
-  // Refresh every 5 seconds
-  refreshInterval = setInterval(async () => {
-    await loadIncidents()
-    checkForNewIncidents()
-  }, 5000)
+  startPolling()
+})
+
+onBeforeUnmount(() => {
+  console.log('📹 MultiCameraTab BEFORE UNMOUNT - stopping polling')
+  stopPolling()
 })
 
 onUnmounted(() => {
-  if (refreshInterval) {
-    clearInterval(refreshInterval)
-  }
+  console.log('📹 MultiCameraTab UNMOUNTED - final cleanup')
+  stopPolling()
+  
+  cameras.value = []
+  incidents.value = []
+  lastIncidentId.value = null
 })
+
+function startPolling() {
+  stopPolling()
+  
+  console.log('🔄 Starting incident polling...')
+  
+  refreshIntervalId = setInterval(async () => {
+    console.log('🔄 Polling for incidents... (interval ID:', refreshIntervalId, ')')
+    await loadIncidents()
+    checkForNewIncidents()
+  }, 5000)
+  
+  console.log('✅ Polling started with interval ID:', refreshIntervalId)
+}
+
+function stopPolling() {
+  if (refreshIntervalId !== null) {
+    console.log('🛑 STOPPING interval ID:', refreshIntervalId)
+    clearInterval(refreshIntervalId)
+    refreshIntervalId = null
+    console.log('✅ Interval cleared')
+  } else {
+    console.log('⚠️ No interval to clear')
+  }
+}
 
 async function loadCameras() {
   try {
@@ -132,6 +148,8 @@ async function loadIncidents() {
     if (res.ok) {
       const data = await res.json()
       incidents.value = data.incidents
+    } else {
+      console.error('Failed to load incidents:', res.status)
     }
   } catch (error) {
     console.error('Could not load incidents:', error)
@@ -143,7 +161,7 @@ function checkForNewIncidents() {
   
   const newest = incidents.value[0]
   
-  // Check if this is a new incident
+  // Check if this is a new incident (ONLY FROM REAL MQTT DATA)
   if (lastIncidentId.value !== newest.id) {
     lastIncidentId.value = newest.id
     
@@ -152,7 +170,6 @@ function checkForNewIncidents() {
       showAlert(newest)
       playAlertSound()
       showBrowserNotification(newest)
-      sendEmailNotification(newest)
       
       // Auto-focus camera
       focusCamera(newest.camera_id)
@@ -160,26 +177,11 @@ function checkForNewIncidents() {
   }
 }
 
-function showAlert(incident) {
-  latestIncident.value = incident
-  
-  // Auto-dismiss after 15 seconds
-  setTimeout(() => {
-    if (latestIncident.value?.id === incident.id) {
-      latestIncident.value = null
-    }
-  }, 15000)
-}
-
-function dismissAlert() {
-  latestIncident.value = null
-}
-
 function playAlertSound() {
   // Play alarm sound: 3 beeps
-  playBeep(880, 0.2, 0) // First beep
-  playBeep(880, 0.2, 0.3) // Second beep
-  playBeep(880, 0.4, 0.6) // Third beep (longer)
+  playBeep(880, 0.2, 0)
+  playBeep(880, 0.2, 0.3)
+  playBeep(880, 0.4, 0.6)
 }
 
 function playBeep(frequency = 880, duration = 0.2, delay = 0) {
@@ -217,27 +219,6 @@ function showBrowserNotification(incident) {
   }
 }
 
-async function sendEmailNotification(incident) {
-  try {
-    await fetch('/api/send-alert-email', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${props.token}`
-      },
-      body: JSON.stringify({
-        incident_id: incident.id,
-        weapon_type: incident.weapon_type,
-        camera_name: incident.camera_name,
-        location: incident.camera_location,
-        detected_at: incident.detected_at
-      })
-    })
-  } catch (error) {
-    console.error('Could not send email:', error)
-  }
-}
-
 function hasRecentIncident(cameraId) {
   const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000)
   return incidents.value.some(inc => 
@@ -253,11 +234,9 @@ function focusCamera(cameraId) {
 
 function toggleFocus(cameraId) {
   if (isFullView.value && focusedCamera.value === cameraId) {
-    // Exit full view mode
     isFullView.value = false
     focusedCamera.value = null
   } else {
-    // Enter full view mode
     isFullView.value = true
     focusedCamera.value = cameraId
   }
@@ -268,16 +247,6 @@ function exitFullView() {
   focusedCamera.value = null
 }
 
-function toggleFullscreen() {
-  if (!document.fullscreenElement) {
-    gridContainer.value?.requestFullscreen()
-    isFullscreen.value = true
-  } else {
-    document.exitFullscreen()
-    isFullscreen.value = false
-  }
-}
-
 function formatWeaponName(weaponType) {
   const names = {
     'knife': 'Knife',
@@ -285,15 +254,6 @@ function formatWeaponName(weaponType) {
     'heavy_weapon': 'Heavy Weapon'
   }
   return names[weaponType] || weaponType
-}
-
-function formatTime(timeString) {
-  if (!timeString) return 'N/A'
-  try {
-    return new Date(timeString).toLocaleTimeString()
-  } catch {
-    return 'N/A'
-  }
 }
 </script>
 
@@ -349,30 +309,9 @@ function formatTime(timeString) {
   transform: translateX(-2px);
 }
 
-/* Alert Banner */
-.alert-banner {
-  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
-  color: white;
-  padding: 15px 20px;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
-  animation: pulse 2s ease-in-out infinite;
-}
-
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.9; }
-}
-
-.alert-content {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-
-.alert-icon {
-  font-size: 2rem;
-  animation: shake 0.5s ease-in-out infinite;
 }
 
 @keyframes shake {
@@ -381,42 +320,6 @@ function formatTime(timeString) {
   75% { transform: translateX(5px); }
 }
 
-.alert-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.alert-info strong {
-  font-size: 1.1rem;
-}
-
-.alert-action {
-  padding: 8px 16px;
-  background: white;
-  color: #e74c3c;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.3s ease;
-}
-
-.alert-action:hover {
-  transform: scale(1.05);
-}
-
-.alert-dismiss {
-  background: none;
-  border: none;
-  color: white;
-  font-size: 1.5rem;
-  cursor: pointer;
-  padding: 5px 10px;
-}
-
-/* Camera Grid */
 .camera-grid {
   display: grid;
   gap: 15px;
@@ -570,87 +473,6 @@ function formatTime(timeString) {
 
 .full-view .camera-status {
   font-size: 1.1rem;
-}
-
-/* Incidents Sidebar */
-.incidents-sidebar {
-  background: white;
-  padding: 20px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.incidents-sidebar h4 {
-  color: #2c3e50;
-  margin-bottom: 15px;
-}
-
-.no-incidents {
-  text-align: center;
-  color: #7f8c8d;
-  padding: 20px;
-  font-style: italic;
-}
-
-.incident-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.incident-item {
-  padding: 12px;
-  background: #f8f9fa;
-  border-radius: 8px;
-  border-left: 4px solid #e74c3c;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.incident-item:hover {
-  background: #ecf0f1;
-  transform: translateX(5px);
-}
-
-.incident-time {
-  font-size: 0.8rem;
-  color: #7f8c8d;
-  margin-bottom: 5px;
-}
-
-.incident-details {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.weapon-badge {
-  padding: 3px 10px;
-  border-radius: 10px;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-.weapon-badge.knife {
-  background: #ffebee;
-  color: #e74c3c;
-}
-
-.weapon-badge.pistol {
-  background: #fff3e0;
-  color: #f39c12;
-}
-
-.weapon-badge.heavy_weapon {
-  background: #f3e5f5;
-  color: #9b59b6;
-}
-
-.incident-camera {
-  font-size: 0.85rem;
-  color: #2c3e50;
 }
 
 @media (max-width: 768px) {

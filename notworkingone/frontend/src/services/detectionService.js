@@ -11,19 +11,37 @@ class DetectionService {
     this.pollInterval = null
     this.lastCheckTime = 'Never'
     this.isConnected = false
+    this.token = null
+    this.lastTimestamp = null
   }
 
-  // Start polling for detections
+  reset() {
+    this.stopPolling()
+    this.listeners = []
+    this.currentDetection = {
+      detected: false,
+      objects: {},
+      timestamp: null
+    }
+    this.detectionHistory = []
+    this.lastCheckTime = 'Never'
+    this.isConnected = false
+    this.token = null
+    this.lastTimestamp = null
+    console.log('🔄 Detection service reset')
+  }
+
   startPolling(token) {
-    if (this.isPolling) return
+    if (this.isPolling) {
+      console.log('⚠️ Detection service already polling')
+      return
+    }
     
     this.isPolling = true
     this.token = token
     
-    // Initial check
     this.checkDetection()
     
-    // Poll every 2 seconds
     this.pollInterval = setInterval(() => {
       this.checkDetection()
     }, 2000)
@@ -31,7 +49,6 @@ class DetectionService {
     console.log('🔍 Detection service started - polling every 2 seconds')
   }
 
-  // Stop polling
   stopPolling() {
     if (this.pollInterval) {
       clearInterval(this.pollInterval)
@@ -41,10 +58,9 @@ class DetectionService {
     console.log('🛑 Detection service stopped')
   }
 
-  // Check for new detections
   async checkDetection() {
     try {
-      const response = await fetch('http://localhost:6001/detection', {
+      const response = await fetch('/api/detection-status', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json'
@@ -56,40 +72,36 @@ class DetectionService {
         this.isConnected = true
         this.lastCheckTime = new Date().toLocaleTimeString()
         
-        // Check if this is a new detection
         const hasObjects = data.objects && Object.keys(data.objects).length > 0
         const isNewDetection = data.detected && hasObjects && 
-                               data.timestamp !== this.currentDetection.timestamp
+                               data.timestamp && 
+                               data.timestamp !== this.lastTimestamp
         
         if (isNewDetection) {
           console.log('🚨 NEW DETECTION:', data)
           
-          // Add to history
+          this.lastTimestamp = data.timestamp
+          
           this.detectionHistory.unshift({
             detected: data.detected,
             objects: data.objects,
             timestamp: data.timestamp
           })
           
-          // Keep only last 50 detections
           if (this.detectionHistory.length > 50) {
             this.detectionHistory = this.detectionHistory.slice(0, 50)
           }
           
-          // Play alert sound
           this.playAlertSound()
           
-          // Show browser notification
           this.showNotification(data)
           
-          // Auto-log detection to backend
-          this.logDetectionToBackend(data)
+          // Log EACH weapon type separately to backend
+          await this.logAllDetectionsToBackend(data)
         }
         
-        // Update current detection
         this.currentDetection = data
         
-        // Notify all listeners
         this.notifyListeners()
       } else {
         this.isConnected = false
@@ -102,12 +114,15 @@ class DetectionService {
     }
   }
 
-  // Log detection to backend
-  async logDetectionToBackend(detection) {
-    if (!this.token) return
+  // NEW: Log each weapon type separately
+  async logAllDetectionsToBackend(detection) {
+    if (!this.token) {
+      console.log('⚠️ No token available for logging detection')
+      return
+    }
     
     try {
-      // Log each detected weapon
+      // Process each weapon type separately
       for (const [weaponType, data] of Object.entries(detection.objects)) {
         const count = data.count || 0
         const confidences = data.confidences || []
@@ -115,32 +130,45 @@ class DetectionService {
         if (count > 0 && confidences.length > 0) {
           const avgConfidence = confidences.reduce((a, b) => a + b, 0) / confidences.length
           
-          // Normalize weapon type
           const normalizedType = this.normalizeWeaponType(weaponType)
           
-          // Log to backend
-          await fetch('/api/log-detection', {
+          console.log(`📝 Logging detection: ${normalizedType} (${(avgConfidence * 100).toFixed(1)}% confidence)`)
+          
+          // Log to backend - this will auto-create incident if confidence >= 0.80
+          const response = await fetch('/api/log-detection', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${this.token}`
             },
             body: JSON.stringify({
-              camera_id: 1, // Default camera, you can make this dynamic
+              camera_id: 1,
               weapon_type: normalizedType,
               confidence_score: avgConfidence
             })
           })
           
-          console.log(`✓ Logged ${normalizedType} detection (${(avgConfidence * 100).toFixed(1)}% confidence)`)
+          if (response.ok) {
+            const result = await response.json()
+            console.log(`✅ Logged ${normalizedType} detection:`, result.message)
+            
+            if (result.incident_id) {
+              console.log(`🚨 Incident #${result.incident_id} created for ${normalizedType}`)
+            }
+          } else {
+            const error = await response.json()
+            console.error(`❌ Failed to log ${normalizedType} detection:`, error)
+          }
+          
+          // Small delay between requests to avoid overwhelming backend
+          await new Promise(resolve => setTimeout(resolve, 100))
         }
       }
     } catch (error) {
-      console.error('Error logging detection to backend:', error)
+      console.error('Error logging detections to backend:', error)
     }
   }
 
-  // Normalize weapon type
   normalizeWeaponType(weaponType) {
     const mapping = {
       'gun': 'pistol',
@@ -152,12 +180,10 @@ class DetectionService {
     return mapping[weaponType.toLowerCase()] || weaponType.toLowerCase()
   }
 
-  // Play alert sound
   playAlertSound() {
     try {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)()
       
-      // Play 3 beeps
       this.playBeep(audioContext, 880, 0.2, 0)
       this.playBeep(audioContext, 880, 0.2, 0.3)
       this.playBeep(audioContext, 880, 0.4, 0.6)
@@ -185,7 +211,6 @@ class DetectionService {
     }, delay * 1000)
   }
 
-  // Show browser notification
   async showNotification(detection) {
     if ('Notification' in window && Notification.permission === 'granted') {
       const weaponList = Object.keys(detection.objects)
@@ -203,10 +228,9 @@ class DetectionService {
     }
   }
 
-  // Format weapon name
   formatWeaponName(weaponType) {
     const names = {
-      'gun': 'Gun/Pistol',
+      'gun': 'Pistol',
       'heavy-weapon': 'Heavy Weapon',
       'heavy_weapon': 'Heavy Weapon',
       'knife': 'Knife',
@@ -215,11 +239,9 @@ class DetectionService {
     return names[weaponType] || weaponType.replace('-', ' ').replace('_', ' ')
   }
 
-  // Subscribe to detection updates
   subscribe(callback) {
     this.listeners.push(callback)
     
-    // Immediately call with current state
     callback({
       currentDetection: this.currentDetection,
       detectionHistory: this.detectionHistory,
@@ -227,13 +249,11 @@ class DetectionService {
       isConnected: this.isConnected
     })
     
-    // Return unsubscribe function
     return () => {
       this.listeners = this.listeners.filter(cb => cb !== callback)
     }
   }
 
-  // Notify all listeners
   notifyListeners() {
     const state = {
       currentDetection: this.currentDetection,
@@ -251,7 +271,6 @@ class DetectionService {
     })
   }
 
-  // Get current state
   getState() {
     return {
       currentDetection: this.currentDetection,
@@ -262,7 +281,6 @@ class DetectionService {
   }
 }
 
-// Create singleton instance
 const detectionService = new DetectionService()
 
 export default detectionService

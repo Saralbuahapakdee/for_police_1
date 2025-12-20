@@ -49,20 +49,21 @@
     <!-- Main App (Logged In) -->
     <MainApp 
       v-if="token"
+      :key="appKey"
       :token="token"
       :user-data="userData"
       @logout="handleLogout"
     />
 
-    <!-- Global Detection Alert Banner (Shows on all pages when logged in) -->
+    <!-- Global Detection Alert Banner - FIXED TEXT -->
     <div v-if="token && currentDetection.detected && hasObjects" class="global-alert-banner">
       <div class="alert-content">
         <div class="alert-icon">🚨</div>
         <div class="alert-info">
           <strong>WEAPON DETECTED!</strong>
           <span>
-            <span v-for="(data, weaponType) in currentDetection.objects" :key="weaponType">
-              {{ formatWeaponName(weaponType) }} ({{ data.count }})
+            <span v-for="(data, weaponType, index) in currentDetection.objects" :key="weaponType">
+              {{ formatWeaponName(weaponType) }} ({{ data.count }}){{ index < Object.keys(currentDetection.objects).length - 1 ? ', ' : '' }}
             </span>
           </span>
         </div>
@@ -85,6 +86,8 @@ const userData = ref({
   userId: null
 })
 
+const appKey = ref(0)
+
 const isLoading = ref(false)
 const errorMessage = ref('')
 
@@ -93,7 +96,6 @@ const loginData = ref({
   password: ''
 })
 
-// Detection state
 const currentDetection = ref({
   detected: false,
   objects: {},
@@ -117,11 +119,11 @@ onMounted(() => {
       userId: parseInt(localStorage.getItem('userId')) || null
     }
     
-    // Start detection service when user is logged in
+    appKey.value++
+    
     startDetectionService()
   }
 
-  // Request notification permission
   if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission()
   }
@@ -132,12 +134,10 @@ onUnmounted(() => {
 })
 
 function startDetectionService() {
-  // Subscribe to detection updates
   unsubscribeDetection = detectionService.subscribe((state) => {
     currentDetection.value = state.currentDetection
   })
   
-  // Start polling
   detectionService.startPolling(token.value)
   
   console.log('✅ Global detection service started')
@@ -194,7 +194,9 @@ async function login() {
       
       loginData.value = { username: '', password: '' }
       
-      // Start detection service after successful login
+      appKey.value++
+      console.log('🔄 App key incremented to:', appKey.value)
+      
       startDetectionService()
     } else {
       errorMessage.value = data.error || 'Invalid credentials'
@@ -208,21 +210,34 @@ async function login() {
 }
 
 function handleLogout() {
+  console.log('🔓 LOGOUT - Starting cleanup...')
+  
   stopDetectionService()
+  detectionService.reset()
   
   token.value = ''
   userData.value = { username: '', fullName: '', role: '', userId: null }
+  currentDetection.value = { detected: false, objects: {}, timestamp: null }
   
   localStorage.removeItem('authToken')
   localStorage.removeItem('currentUsername')
   localStorage.removeItem('userFullName')
   localStorage.removeItem('userRole')
   localStorage.removeItem('userId')
+  
+  appKey.value++
+  
+  console.log('✅ LOGOUT complete - all state cleared, app key:', appKey.value)
+  
+  setTimeout(() => {
+    console.log('🔄 Reloading page to ensure clean state...')
+    window.location.reload()
+  }, 100)
 }
 
 function formatWeaponName(weaponType) {
   const names = {
-    'gun': 'Gun/Pistol',
+    'gun': 'Pistol',
     'heavy-weapon': 'Heavy Weapon',
     'heavy_weapon': 'Heavy Weapon',
     'knife': 'Knife',
@@ -383,10 +398,9 @@ body {
   font-weight: 600;
 }
 
-/* Global Alert Banner */
 .global-alert-banner {
   position: fixed;
-  top: 20px;
+  bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 9999;
@@ -397,13 +411,13 @@ body {
   padding: 15px 20px;
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(231, 76, 60, 0.4);
-  animation: slideDown 0.3s ease-out, pulse 2s ease-in-out infinite;
+  animation: slideUp 0.3s ease-out, pulse 2s ease-in-out infinite;
 }
 
-@keyframes slideDown {
+@keyframes slideUp {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(-20px);
+    transform: translateX(-50%) translateY(20px);
   }
   to {
     opacity: 1;
@@ -476,7 +490,7 @@ body {
   
   .global-alert-banner {
     min-width: 90vw;
-    top: 10px;
+    bottom: 10px;
   }
   
   .alert-content {

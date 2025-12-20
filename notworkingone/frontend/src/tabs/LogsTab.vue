@@ -55,12 +55,12 @@
           />
         </template>
         
-        <button @click="loadLogs" class="refresh-btn" title="Refresh">
-          🔄 Refresh
-        </button>
-        
         <button @click="exportToCSV" class="export-btn" title="Export to CSV">
           📥 Export
+        </button>
+
+        <button @click="loadLogs" class="refresh-btn" title="Refresh">
+          🔄
         </button>
       </div>
     </div>

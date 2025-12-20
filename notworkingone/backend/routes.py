@@ -258,36 +258,56 @@ def set_prefs():
 @detection_bp.post("/log-detection")
 @token_required
 def log_det():
+    """
+    FIXED: Now creates ONE incident per weapon type detection
+    Each weapon detection gets its own incident
+    """
     try:
         data = request.json
         if not data or not data.get('weapon_type') or not data.get('camera_id'):
             return {"error": "Missing weapon_type or camera_id"}, 400
         
         user_id = request.user.get('user_id')
-        detection_id = log_detection(user_id, data['camera_id'], data['weapon_type'], 
-                                     data.get('confidence_score', 0.85))
+        weapon_type = data['weapon_type']
+        camera_id = data['camera_id']
+        confidence_score = data.get('confidence_score', 0.85)
         
-        # Auto-create incident for high-confidence detections
-        if data.get('confidence_score', 0.85) >= 0.80:
+        # Log the detection
+        detection_id = log_detection(user_id, camera_id, weapon_type, confidence_score)
+        
+        # Create incident for THIS weapon type if confidence >= 0.80
+        incident_id = None
+        if confidence_score >= 0.80:
             from database import get_db_connection
             with get_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute('SELECT location FROM cameras WHERE id = ?', (data['camera_id'],))
+                cursor.execute('SELECT location FROM cameras WHERE id = ?', (camera_id,))
                 row = cursor.fetchone()
                 location = row['location'] if row else 'Unknown'
             
+            # Create incident specifically for this weapon type
             incident_id = create_incident(
-                data['camera_id'], 
-                data['weapon_type'], 
+                camera_id, 
+                weapon_type,  # Each weapon gets its own incident
                 detection_id, 
                 user_id, 
                 location,
-                f"Automatic incident created from {data['weapon_type']} detection"
+                f"Automatic incident created from {weapon_type} detection"
             )
             
-            return {"message": "Detection logged and incident created", "incident_id": incident_id}
+            print(f"✅ Created incident #{incident_id} for {weapon_type} detection (confidence: {confidence_score:.2%})")
+            
+            return {
+                "message": f"Detection logged and incident created for {weapon_type}", 
+                "incident_id": incident_id,
+                "detection_id": detection_id
+            }
         
-        return {"message": "Detection logged successfully"}
+        return {
+            "message": "Detection logged successfully",
+            "detection_id": detection_id
+        }
+        
     except Exception as e:
         print(f"Log detection error: {e}")
         import traceback
@@ -448,7 +468,7 @@ def send_alert_email():
         return {"error": "Internal server error"}, 500
 
 
-# ========== VIDEO STREAM ROUTE WITH MQTT DETECTION ==========
+# ========== VIDEO STREAM ROUTE - PROXY ONLY, NO AUTO-LOGGING ==========
 @camera_bp.get("/video")
 def video_stream():
     try:
@@ -458,59 +478,40 @@ def video_stream():
         if not token or not verify_token(token):
             return {"error": "Unauthorized"}, 401
 
-        user_data = verify_token(token)
-        
-        # Check for real-time detections from AI service
-        try:
-            detection_response = requests.get(f"{AI_STREAM_URL.replace('/stream', '/detection')}", timeout=1)
-            if detection_response.ok:
-                detection_data = detection_response.json()
-                
-                if detection_data.get('detected') and detection_data.get('objects'):
-                    # Process each detected weapon
-                    for weapon_type, data in detection_data['objects'].items():
-                        count = data.get('count', 0)
-                        confidences = data.get('confidences', [])
-                        
-                        if count > 0 and confidences:
-                            # Normalize weapon type
-                            normalized_weapon = normalize_weapon_type(weapon_type)
-                            avg_confidence = sum(confidences) / len(confidences)
-                            
-                            # Log detection
-                            detection_id = log_detection(
-                                user_data.get('user_id'), 
-                                camera_id, 
-                                normalized_weapon, 
-                                avg_confidence
-                            )
-                            
-                            # Auto-create incident for high-confidence detections
-                            if avg_confidence >= 0.80:
-                                from database import get_db_connection
-                                with get_db_connection() as conn:
-                                    cursor = conn.cursor()
-                                    cursor.execute('SELECT location FROM cameras WHERE id = ?', (camera_id,))
-                                    row = cursor.fetchone()
-                                    location = row['location'] if row else 'Unknown'
-                                
-                                create_incident(
-                                    camera_id, 
-                                    normalized_weapon, 
-                                    detection_id, 
-                                    user_data.get('user_id'), 
-                                    location, 
-                                    f"Automatic incident from {normalized_weapon} detection (confidence: {avg_confidence*100:.1f}%)"
-                                )
-                                
-                                print(f"🚨 Incident created for {normalized_weapon} detection with {avg_confidence*100:.1f}% confidence")
-        except Exception as e:
-            print(f"Error checking AI detection: {e}")
-
-        # Proxy video stream
+        # Just proxy the video stream - detection logging is handled by frontend polling
         r = requests.get(AI_STREAM_URL, stream=True)
         return Response(r.iter_content(chunk_size=1024),
                         content_type=r.headers.get("Content-Type", "multipart/x-mixed-replace; boundary=frame"))
     except Exception as e:
         print(f"Video proxy error: {e}")
         return {"error": "Internal server error"}, 500
+
+
+# ========== NEW DETECTION STATUS ENDPOINT ==========
+@detection_bp.get("/detection-status")
+def get_detection_status():
+    """Get current detection status from AI service - PUBLIC endpoint for frontend polling"""
+    try:
+        # Get detection data from AI service
+        detection_response = requests.get(f"{AI_STREAM_URL.replace('/stream', '/detection')}", timeout=2)
+        
+        if detection_response.ok:
+            detection_data = detection_response.json()
+            return {
+                "detected": detection_data.get('detected', False),
+                "objects": detection_data.get('objects', {}),
+                "timestamp": detection_data.get('timestamp')
+            }
+        else:
+            return {
+                "detected": False,
+                "objects": {},
+                "timestamp": None
+            }
+    except Exception as e:
+        print(f"Error getting detection status: {e}")
+        return {
+            "detected": False,
+            "objects": {},
+            "timestamp": None
+        }
