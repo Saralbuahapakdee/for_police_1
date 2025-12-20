@@ -316,7 +316,7 @@ async function deleteOfficer() {
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  font-weight: 600;
+  font-size: 0.95rem;
   transition: all 0.3s ease;
 }
 

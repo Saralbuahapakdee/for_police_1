@@ -2,7 +2,7 @@
   <div class="stream-tab">
     <!-- Camera Selector -->
     <div class="camera-selector">
-      <h3>📹 Select Camera</h3>
+      <h2>📹 Select Camera</h2>
       <div class="camera-buttons">
         <button 
           v-for="camera in cameras" 
@@ -18,7 +18,7 @@
 
     <!-- Weapon Preferences -->
     <div class="stream-controls">
-      <h3>⚙️ Weapon Detection Preferences</h3>
+      <h2>⚙️ Weapon Detection Preferences</h2>
       <div v-if="weaponPreferences.length === 0" class="loading-preferences">
         Loading weapon preferences...
       </div>
@@ -226,7 +226,7 @@ function formatTime(timeString) {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.camera-selector h3 {
+.camera-selector h2 {
   margin-bottom: 15px;
   color: #2c3e50;
 }
@@ -277,7 +277,7 @@ function formatTime(timeString) {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.stream-controls h3 {
+.stream-controls h2 {
   margin-bottom: 15px;
   color: #2c3e50;
 }

@@ -521,6 +521,7 @@ function formatDate(dateString) {
   border: 1px solid #ddd;
   border-radius: 6px;
   background: white;
+  font-size: 0.95rem;
   cursor: pointer;
 }
 
@@ -534,6 +535,7 @@ function formatDate(dateString) {
   color: white;
   border: none;
   border-radius: 6px;
+  font-size: 0.95rem;
   cursor: pointer;
   transition: background-color 0.3s ease;
 }

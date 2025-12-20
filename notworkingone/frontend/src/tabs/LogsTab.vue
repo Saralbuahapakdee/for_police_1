@@ -415,7 +415,7 @@ function getConfidenceClass(score) {
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   transition: background-color 0.3s ease;
 }
 

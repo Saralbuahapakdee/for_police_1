@@ -1,7 +1,7 @@
 <template>
   <div class="multi-camera-tab">
     <div class="camera-grid-header">
-      <h3>📹 Multi-Camera View</h3>
+      <h2>📹 Multi-Camera View</h2>
       <div class="header-controls">
         <select v-if="!isFullView" v-model="gridSize" class="grid-select">
           <option value="2x2">2x2 Grid (4 cameras)</option>
@@ -275,7 +275,7 @@ function formatWeaponName(weaponType) {
   align-items: center;
 }
 
-.camera-grid-header h3 {
+.camera-grid-header h2 {
   color: #2c3e50;
   margin: 0;
 }
@@ -290,6 +290,7 @@ function formatWeaponName(weaponType) {
   border: 1px solid #ddd;
   border-radius: 6px;
   background: white;
+  font-size: 0.95rem;
   cursor: pointer;
 }
 

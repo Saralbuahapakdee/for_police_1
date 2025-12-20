@@ -1,7 +1,7 @@
 <template>
   <div class="dashboard-tab">
     <div class="dashboard-header">
-      <h3>📊 Detection Analytics</h3>
+      <h2>📊 Detection Analytics</h2>
       <div class="dashboard-filters">
         <select v-model="filterCamera" @change="loadDashboard" class="filter-select">
           <option :value="null">All Cameras</option>
@@ -410,7 +410,7 @@ function getConfidenceLabel(score) {
   gap: 15px;
 }
 
-.dashboard-header h3 {
+.dashboard-header h2 {
   color: #2c3e50;
 }
 
@@ -427,6 +427,7 @@ function getConfidenceLabel(score) {
   border: 1px solid #ddd;
   border-radius: 6px;
   background: white;
+  font-size: 0.95rem;
   cursor: pointer;
 }
 
@@ -440,6 +441,7 @@ function getConfidenceLabel(score) {
   color: white;
   border: none;
   border-radius: 6px;
+  font-size: 0.95rem;
   cursor: pointer;
   transition: background-color 0.3s ease;
 }
