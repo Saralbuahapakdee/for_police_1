@@ -702,13 +702,13 @@ function formatDate(dateString) {
 }
 
 .weapon-badge.knife {
-  background: #ffebee;
-  color: #e74c3c;
+  background: #ffebf4;
+  color: #e73c8c;
 }
 
 .weapon-badge.pistol {
-  background: #fff3e0;
-  color: #f39c12;
+  background: #e0e2ff;
+  color: #3638ca;
 }
 
 .weapon-badge.heavy_weapon {

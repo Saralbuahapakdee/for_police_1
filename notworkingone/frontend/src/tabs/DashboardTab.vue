@@ -65,11 +65,6 @@
           <div class="card-subtitle">{{ cameraInfo }}</div>
         </div>
         <div class="summary-card">
-          <h4>Most Detected</h4>
-          <div class="card-value">{{ mostDetectedWeapon }}</div>
-          <div class="card-subtitle">{{ mostDetectedCount }} detections</div>
-        </div>
-        <div class="summary-card">
           <h4>Avg Confidence</h4>
           <div class="card-value">{{ avgConfidence }}%</div>
           <div class="card-subtitle" :class="getConfidenceClass(avgConfidence / 100)">
@@ -222,17 +217,6 @@ const dailyAverage = computed(() => {
   const days = dateRangeType.value === 'preset' ? filterDays.value : 
     Math.ceil((new Date(endDate.value) - new Date(startDate.value)) / (1000 * 60 * 60 * 24)) + 1
   return Math.round(totalDetections.value / days)
-})
-
-const mostDetectedWeapon = computed(() => {
-  if (!dashboardData.value || dashboardData.value.weapon_totals.length === 0) return 'None'
-  const top = dashboardData.value.weapon_totals[0]
-  return formatWeaponName(top.weapon_type)
-})
-
-const mostDetectedCount = computed(() => {
-  if (!dashboardData.value || dashboardData.value.weapon_totals.length === 0) return 0
-  return dashboardData.value.weapon_totals[0].total
 })
 
 const avgConfidence = computed(() => {

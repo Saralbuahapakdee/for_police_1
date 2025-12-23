@@ -72,10 +72,6 @@
         <div class="stat-value">{{ logs.length }}</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Date Range</div>
-        <div class="stat-value-small">{{ dateRangeDisplay }}</div>
-      </div>
-      <div class="stat-card">
         <div class="stat-label">Cameras Monitored</div>
         <div class="stat-value">{{ uniqueCameras }}</div>
       </div>
@@ -456,12 +452,6 @@ function getConfidenceClass(score) {
 .stat-value {
   font-size: 1.8rem;
   font-weight: 700;
-  color: #2c3e50;
-}
-
-.stat-value-small {
-  font-size: 1rem;
-  font-weight: 600;
   color: #2c3e50;
 }
 
