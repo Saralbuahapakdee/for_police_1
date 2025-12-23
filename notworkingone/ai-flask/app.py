@@ -78,9 +78,6 @@ def get_detection_overlay_text():
 
 def generate():
     rtsp_url = "rtsp://admin2:admin234@161.246.5.20:554/cam/realmonitor?channel=1&subtype=1"
-    latest_frame = None
-    frame_lock = threading.Lock()
-    stop_event = threading.Event()
     cap = None
 
     def open_capture():
@@ -90,109 +87,83 @@ def generate():
         c.set(cv2.CAP_PROP_FPS, 15)        # optional: cap FPS to reduce load
         return c if c.isOpened() else None
 
-    def reader():
-        """Continuously grab the newest frame and drop older ones."""
-        nonlocal cap, latest_frame
-        while not stop_event.is_set():
-            if cap is None or not cap.isOpened():
-                cap = open_capture()
-                if cap is None:
-                    time.sleep(0.2)
-                    continue
-
-            ok, frame = cap.read()
-            if not ok or frame is None:
-                try:
-                    cap.release()
-                except Exception:
-                    pass
-                cap = None
+    while True:
+        if cap is None or not cap.isOpened():
+            cap = open_capture()
+            if cap is None:
                 time.sleep(0.2)
                 continue
 
-            with frame_lock:
-                latest_frame = frame
-
-    # Start background reader to keep latency low
-    threading.Thread(target=reader, daemon=True).start()
-
-    try:
-        while True:
-            # Wait until we have at least one frame
-            if latest_frame is None:
-                time.sleep(0.01)
-                continue
-
-            with frame_lock:
-                frame = latest_frame.copy()
-
-            # Get detection text
-            detection_text = get_detection_overlay_text()
-            
-            # Determine text color based on detection status
-            with detection_lock:
-                is_detected = latest_detection["detected"] and latest_detection["objects"]
-            
-            text_color = (0, 0, 255) if is_detected else (0, 255, 0)  # Red if detected, Green if clear
-            
-            # Add text overlay to frame
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 0.7
-            thickness = 2
-            
-            # Add semi-transparent background for better readability
-            (text_width, text_height), baseline = cv2.getTextSize(
-                detection_text, font, font_scale, thickness
-            )
-            
-            # Draw background rectangle
-            cv2.rectangle(
-                frame,
-                (10, 10),
-                (20 + text_width, 40 + text_height),
-                (0, 0, 0),
-                -1
-            )
-            
-            # Draw text
-            cv2.putText(
-                frame,
-                detection_text,
-                (15, 35),
-                font,
-                font_scale,
-                text_color,
-                thickness,
-                cv2.LINE_AA,
-            )
-            
-            # Add timestamp
-            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            cv2.putText(
-                frame,
-                timestamp,
-                (15, frame.shape[0] - 15),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (255, 255, 255),
-                1,
-                cv2.LINE_AA,
-            )
-
-            # Encode frame (lower quality to speed up)
-            ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
-            if not ok:
-                continue
-            
-            frame_bytes = encoded.tobytes()
-            yield (b"--frame\r\n" + b"Content-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n")
-    finally:
-        stop_event.set()
-        if cap is not None:
+        ok, frame = cap.read()
+        if not ok or frame is None:
             try:
                 cap.release()
             except Exception:
                 pass
+            cap = None
+            time.sleep(0.2)
+            continue
+
+        # Get detection text
+        detection_text = get_detection_overlay_text()
+        
+        # Determine text color based on detection status
+        with detection_lock:
+            is_detected = latest_detection["detected"] and latest_detection["objects"]
+        
+        text_color = (0, 0, 255) if is_detected else (0, 255, 0)  # Red if detected, Green if clear
+        
+        # Add text overlay to frame
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.7
+        thickness = 2
+        
+        # Add semi-transparent background for better readability
+        (text_width, text_height), baseline = cv2.getTextSize(
+            detection_text, font, font_scale, thickness
+        )
+        
+        # Draw background rectangle
+        cv2.rectangle(
+            frame,
+            (10, 10),
+            (20 + text_width, 40 + text_height),
+            (0, 0, 0),
+            -1
+        )
+        
+        # Draw text
+        cv2.putText(
+            frame,
+            detection_text,
+            (15, 35),
+            font,
+            font_scale,
+            text_color,
+            thickness,
+            cv2.LINE_AA,
+        )
+        
+        # Add timestamp
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        cv2.putText(
+            frame,
+            timestamp,
+            (15, frame.shape[0] - 15),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 255, 255),
+            1,
+            cv2.LINE_AA,
+        )
+
+        # Encode frame (lower quality to speed up)
+        ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+        if not ok:
+            continue
+        
+        frame_bytes = encoded.tobytes()
+        yield (b"--frame\r\n" + b"Content-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n")
 
 @app.get("/stream")
 def stream():
