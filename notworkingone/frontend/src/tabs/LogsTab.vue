@@ -132,12 +132,6 @@
       </table>
     </div>
     
-    <div class="logs-footer">
-      <span class="total-count">
-        Showing {{ sortedLogs.length }} of {{ logs.length }} records
-      </span>
-      <span class="date-info">{{ dateRangeDisplay }}</span>
-    </div>
   </div>
 </template>
 
@@ -551,21 +545,6 @@ function getConfidenceClass(score) {
   color: #e74c3c;
 }
 
-.logs-footer {
-  margin-top: 15px;
-  padding-top: 15px;
-  border-top: 1px solid #e9ecef;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.total-count,
-.date-info {
-  color: #7f8c8d;
-  font-size: 0.9rem;
-}
-
 @media (max-width: 768px) {
   .logs-header {
     flex-direction: column;
@@ -595,12 +574,6 @@ function getConfidenceClass(score) {
   .logs-table th,
   .logs-table td {
     padding: 8px;
-  }
-  
-  .logs-footer {
-    flex-direction: column;
-    gap: 10px;
-    align-items: flex-start;
   }
 }
 </style>

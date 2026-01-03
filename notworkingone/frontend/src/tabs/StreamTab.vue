@@ -15,34 +15,9 @@
         </button>
       </div>
     </div>
-
-    <!-- Weapon Preferences -->
-    <div class="stream-controls">
-      <h2>⚙️ Weapon Detection Preferences</h2>
-      <div v-if="weaponPreferences.length === 0" class="loading-preferences">
-        Loading weapon preferences...
-      </div>
-      <div v-else class="weapon-filters">
-        <label v-for="pref in weaponPreferences" :key="pref.weapon_type" class="weapon-checkbox">
-          <input 
-            type="checkbox" 
-            :checked="pref.is_enabled"
-            @change="updateWeaponPreference(pref.weapon_type, $event.target.checked)"
-          />
-          <span class="weapon-name">{{ formatWeaponName(pref.weapon_type) }}</span>
-        </label>
-      </div>
-      <button @click="savePreferences" class="save-preferences-btn" :disabled="isSaving">
-        {{ isSaving ? 'Saving...' : 'Save Preferences' }}
-      </button>
-    </div>
     
     <!-- Video Stream -->
     <div class="stream-container">
-      <h3 class="stream-title">
-        {{ selectedCamera?.camera_name || 'Select a camera' }}
-      </h3>
-      <p class="stream-location">{{ selectedCamera?.location }}</p>
       <img v-if="selectedCamera" :src="videoUrl" class="video-stream" alt="AI Stream" />
       
       <!-- Recent Detections -->
@@ -346,17 +321,6 @@ function formatTime(timeString) {
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   text-align: center;
-}
-
-.stream-title {
-  font-size: 1.5rem;
-  margin-bottom: 8px;
-  color: #2c3e50;
-}
-
-.stream-location {
-  color: #7f8c8d;
-  margin-bottom: 20px;
 }
 
 .video-stream {
