@@ -77,7 +77,7 @@ def get_detection_overlay_text():
         return " | ".join(lines)
 
 def generate():
-    rtsp_url = "rtsp://admin2:admin234@161.246.5.20:554/cam/realmonitor?channel=1&subtype=1"
+    rtsp_url = "rtsp://admin2:459OOPpr0j3ctzaCE61@161.246.5.20:554/cam/realmonitor?channel=1&subtype=1"
     cap = None
 
     def open_capture():
