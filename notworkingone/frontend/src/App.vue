@@ -4,7 +4,6 @@
     <div v-if="!token" class="login-container">
       <div class="login-card">
         <div class="login-header">
-          <div class="badge-icon">🛡️</div>
           <h1>Weapon Detection System</h1>
           <p class="subtitle">Law Enforcement Portal</p>
         </div>
@@ -55,7 +54,16 @@
       @logout="handleLogout"
     />
 
-    <!-- NEW: Incident Alert Banner - SINGLE ALERT ONLY -->
+    <!-- NEW: Hidden video stream for image capture (always present when logged in) -->
+    <img 
+      v-if="token" 
+      :src="`/api/video?token=${token}&camera_id=1`" 
+      class="hidden-video-stream video-stream"
+      alt="Hidden stream for capture"
+      crossorigin="anonymous"
+    />
+
+    <!-- Incident Alert Banner -->
     <div v-if="token && currentAlert" class="incident-alert-banner">
       <button @click="dismissAlert" class="alert-close-btn" title="Dismiss alert">✕</button>
       
@@ -277,6 +285,18 @@ body {
   bottom: 0;
 }
 
+/* Hidden video stream for image capture */
+.hidden-video-stream {
+  position: fixed;
+  top: -9999px;
+  left: -9999px;
+  width: 640px;
+  height: 480px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
 .login-container {
   display: flex;
   align-items: center;
@@ -299,11 +319,6 @@ body {
   color: white;
   padding: 40px 30px;
   text-align: center;
-}
-
-.badge-icon {
-  font-size: 4rem;
-  margin-bottom: 15px;
 }
 
 .login-header h1 {
@@ -398,7 +413,7 @@ body {
   font-weight: 600;
 }
 
-/* Incident Alert Banner Styles - SINGLE ALERT */
+/* Incident Alert Banner Styles */
 .incident-alert-banner {
   position: fixed;
   bottom: 20px;
@@ -506,10 +521,6 @@ body {
   
   .login-header h1 {
     font-size: 1.5rem;
-  }
-  
-  .badge-icon {
-    font-size: 3rem;
   }
   
   .incident-alert-banner {

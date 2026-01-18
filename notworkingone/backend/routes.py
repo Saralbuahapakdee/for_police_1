@@ -1,7 +1,9 @@
 import random
 import requests
+import os
+import base64
+from datetime import datetime
 from flask import Blueprint, request, Response
-from datetime import datetime, timedelta
 from auth import create_token, verify_token, token_required, get_token_from_request, verify_password, hash_password
 from models import (
     get_user_by_username, get_all_officers, create_user, delete_user, update_password, update_user_profile,
@@ -18,6 +20,10 @@ detection_bp = Blueprint('detection', __name__)
 dashboard_bp = Blueprint('dashboard', __name__)
 incident_bp = Blueprint('incident', __name__)
 admin_bp = Blueprint('admin', __name__)
+
+# Create images directory if it doesn't exist
+IMAGES_DIR = os.path.join(os.path.dirname(__file__), 'incident_images')
+os.makedirs(IMAGES_DIR, exist_ok=True)
 
 # Weapon type mapping from MQTT to database format
 WEAPON_TYPE_MAP = {
@@ -260,9 +266,7 @@ def set_prefs():
 @token_required
 def log_det():
     """
-    FIXED: Separates detection log cooldown from incident creation cooldown
-    - Detection logs: 5-minute cooldown per weapon+camera
-    - Incidents: Independent check - creates if no recent incident exists
+    Log detection with optional image capture
     """
     try:
         data = request.json
@@ -273,6 +277,7 @@ def log_det():
         weapon_type = data['weapon_type']
         camera_id = data['camera_id']
         confidence_score = data.get('confidence_score', 0.85)
+        image_data = data.get('image')  # Base64 encoded image
         
         from database import get_db_connection
         from datetime import datetime, timedelta
@@ -282,9 +287,8 @@ def log_det():
             
             five_minutes_ago = datetime.now() - timedelta(minutes=5)
             
-            # ===== STEP 1: Check/Create Detection Log (5-min cooldown) =====
             cursor.execute('''
-                SELECT id, detection_time FROM detection_logs 
+                SELECT id, detection_time, image_path FROM detection_logs 
                 WHERE camera_id = ? 
                   AND weapon_type = ? 
                   AND detection_time >= ?
@@ -295,7 +299,6 @@ def log_det():
             existing_detection = cursor.fetchone()
             
             if existing_detection:
-                # Detection log exists - skip creating new one
                 detection_id = existing_detection['id']
                 time_since = (datetime.now() - datetime.fromisoformat(existing_detection['detection_time'])).total_seconds()
                 remaining = int(300 - time_since)
@@ -303,20 +306,48 @@ def log_det():
                 print(f"⏳ Skipping log for {weapon_type} on camera {camera_id} - recent detection {int(time_since)}s ago (cooldown: {remaining}s remaining)")
                 
                 is_new_log = False
+                image_path = existing_detection['image_path']
             else:
-                # No recent detection - CREATE new log
-                detection_id = log_detection(user_id, camera_id, weapon_type, confidence_score)
+                # Save image if provided
+                image_path = None
+                if image_data:
+                    try:
+                        # Remove data URL prefix if present
+                        if ',' in image_data:
+                            image_data = image_data.split(',')[1]
+                        
+                        # Decode base64 image
+                        img_bytes = base64.b64decode(image_data)
+                        
+                        # Generate filename
+                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        filename = f"{weapon_type}_{camera_id}_{timestamp}.jpg"
+                        filepath = os.path.join(IMAGES_DIR, filename)
+                        
+                        # Save image
+                        with open(filepath, 'wb') as f:
+                            f.write(img_bytes)
+                        
+                        # Store path WITHOUT 'incident_images/' prefix since we'll add it in the route
+                        image_path = filename
+                        print(f"📸 Saved detection image: {filepath} (stored as: {image_path})")
+                    except Exception as e:
+                        print(f"❌ Error saving image: {e}")
+                        import traceback
+                        traceback.print_exc()
+                
+                # Create new detection log with image path
+                detection_id = log_detection(user_id, camera_id, weapon_type, confidence_score, image_path)
                 
                 print(f"✅ Created NEW detection log #{detection_id} for {weapon_type} on camera {camera_id} (confidence: {confidence_score:.2%})")
                 
                 is_new_log = True
             
-            # ===== STEP 2: Check/Create Incident (INDEPENDENT check) =====
+            # Rest of the incident creation logic...
             incident_id = None
             is_new_incident = False
             
             if confidence_score >= 0.80:
-                # Check for existing recent incident (within last 5 minutes)
                 cursor.execute('''
                     SELECT id, status FROM incidents 
                     WHERE camera_id = ? 
@@ -330,18 +361,15 @@ def log_det():
                 existing_incident = cursor.fetchone()
                 
                 if existing_incident:
-                    # Incident exists - just link detection to it
                     incident_id = existing_incident['id']
                     print(f"✓ Using existing incident #{incident_id} for {weapon_type} (status: {existing_incident['status']})")
                     
-                    # Link the detection to this incident
                     cursor.execute('UPDATE detection_logs SET incident_id = ? WHERE id = ?', 
                                  (incident_id, detection_id))
                     conn.commit()
                     
                     is_new_incident = False
                 else:
-                    # No recent incident - CREATE new one
                     cursor.execute('SELECT location FROM cameras WHERE id = ?', (camera_id,))
                     row = cursor.fetchone()
                     location = row['location'] if row else 'Unknown'
@@ -352,31 +380,33 @@ def log_det():
                         detection_id, 
                         user_id, 
                         location,
-                        f"Automatic incident created from {weapon_type} detection"
+                        f"Automatic incident created from {weapon_type} detection",
+                        image_path  # Pass the image path to incident
                     )
                     
                     print(f"🚨 Created NEW incident #{incident_id} for {weapon_type} detection (confidence: {confidence_score:.2%})")
                     
                     is_new_incident = True
             
-            # ===== STEP 3: Return Response =====
             if incident_id:
                 return {
                     "message": f"Detection logged and {'NEW' if is_new_incident else 'existing'} incident #{incident_id} {'created' if is_new_incident else 'linked'} for {weapon_type}",
                     "incident_id": incident_id,
                     "detection_id": detection_id,
                     "is_new_log": is_new_log,
-                    "is_new_incident": is_new_incident
+                    "is_new_incident": is_new_incident,
+                    "image_path": image_path
                 }
             else:
                 return {
                     "message": "Detection logged successfully (confidence too low for incident)",
                     "detection_id": detection_id,
-                    "is_new_log": is_new_log
+                    "is_new_log": is_new_log,
+                    "image_path": image_path
                 }
         
     except Exception as e:
-        print(f"Log detection error: {e}")
+        print(f"❌ Log detection error: {e}")
         import traceback
         traceback.print_exc()
         return {"error": "Internal server error"}, 500
@@ -395,6 +425,41 @@ def get_logs():
         return {"logs": [dict(log) for log in logs]}
     except Exception as e:
         print(f"Get detection logs error: {e}")
+        return {"error": "Internal server error"}, 500
+
+
+# ========== IMAGE SERVING ROUTE ==========
+@detection_bp.get("/incident_images/<path:filename>")
+def serve_incident_image(filename):
+    """Serve incident images"""
+    try:
+        # Remove any 'incident_images/' prefix from filename if present
+        clean_filename = filename.replace('incident_images/', '')
+        
+        filepath = os.path.join(IMAGES_DIR, clean_filename)
+        
+        print(f"📸 Attempting to serve image: {filepath}")
+        print(f"📂 IMAGES_DIR: {IMAGES_DIR}")
+        print(f"📄 Clean filename: {clean_filename}")
+        print(f"✓ File exists: {os.path.exists(filepath)}")
+        
+        if os.path.exists(filepath):
+            with open(filepath, 'rb') as f:
+                image_data = f.read()
+            print(f"✅ Successfully loaded image: {len(image_data)} bytes")
+            return Response(image_data, mimetype='image/jpeg')
+        else:
+            print(f"❌ Image not found at: {filepath}")
+            # List files in directory for debugging
+            if os.path.exists(IMAGES_DIR):
+                print(f"📂 Files in {IMAGES_DIR}:")
+                for f in os.listdir(IMAGES_DIR):
+                    print(f"  - {f}")
+            return {"error": "Image not found"}, 404
+    except Exception as e:
+        print(f"❌ Serve image error: {e}")
+        import traceback
+        traceback.print_exc()
         return {"error": "Internal server error"}, 500
 
 
@@ -426,13 +491,9 @@ def get_incidents_route():
         user_id = request.user.get('user_id')
         user_role = request.user.get('role')
         
-        # For officers: only show incidents assigned to them or unassigned
-        # For admins: show all incidents (or filtered by assigned_to if specified)
         if user_role == 'officer':
-            # Officers can only see their own assignments or unassigned incidents
             incidents_list = get_incidents(status, user_id, limit, officer_view=True)
         else:
-            # Admins can see all incidents
             incidents_list = get_incidents(status, assigned_to, limit, officer_view=False)
         
         return {"incidents": [dict(inc) for inc in incidents_list]}
@@ -470,22 +531,17 @@ def update_incident_route(incident_id):
         user_id = request.user.get('user_id')
         user_role = request.user.get('role')
         
-        # Get the incident to check permissions
         incident = get_incident_by_id(incident_id)
         if not incident:
             return {"error": "Incident not found"}, 404
         
-        # Permission check for officers
         if user_role == 'officer':
-            # Officers can only update incidents assigned to them or unassigned incidents
             if incident['assigned_to'] is not None and incident['assigned_to'] != user_id:
                 return {"error": "You can only update incidents assigned to you or unassigned incidents"}, 403
             
-            # When officer takes action on unassigned incident, auto-assign to them
             if incident['assigned_to'] is None and 'status' in data:
                 data['assigned_to'] = user_id
         
-        # Update the incident
         if update_incident(incident_id, user_id, data):
             return {"message": "Incident updated successfully"}
         else:
@@ -513,7 +569,8 @@ def create_incident_route():
             data['detection_id'],
             user_id,
             data.get('location', ''),
-            data.get('description', '')
+            data.get('description', ''),
+            data.get('image_path')
         )
         
         return {"message": "Incident created successfully", "incident_id": incident_id}, 201
@@ -565,7 +622,7 @@ def send_alert_email():
         return {"error": "Internal server error"}, 500
 
 
-# ========== VIDEO STREAM ROUTE - PROXY ONLY, NO AUTO-LOGGING ==========
+# ========== VIDEO STREAM ROUTE ==========
 @camera_bp.get("/video")
 def video_stream():
     try:
@@ -575,7 +632,6 @@ def video_stream():
         if not token or not verify_token(token):
             return {"error": "Unauthorized"}, 401
 
-        # Just proxy the video stream - detection logging is handled by frontend polling
         r = requests.get(AI_STREAM_URL, stream=True)
         return Response(r.iter_content(chunk_size=1024),
                         content_type=r.headers.get("Content-Type", "multipart/x-mixed-replace; boundary=frame"))
@@ -584,12 +640,11 @@ def video_stream():
         return {"error": "Internal server error"}, 500
 
 
-# ========== NEW DETECTION STATUS ENDPOINT ==========
+# ========== DETECTION STATUS ENDPOINT ==========
 @detection_bp.get("/detection-status")
 def get_detection_status():
-    """Get current detection status from AI service - PUBLIC endpoint for frontend polling"""
+    """Get current detection status from AI service - PUBLIC endpoint"""
     try:
-        # Get detection data from AI service
         detection_response = requests.get(f"{AI_STREAM_URL.replace('/stream', '/detection')}", timeout=2)
         
         if detection_response.ok:

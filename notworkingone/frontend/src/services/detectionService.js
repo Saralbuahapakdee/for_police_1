@@ -16,12 +16,13 @@ class DetectionService {
     this.token = null
     this.lastTimestamp = null
     
-    // Track last logged detection per weapon+camera (5 min cooldown)
-    this.lastLoggedDetection = new Map() // key: "cameraId:weaponType", value: timestamp
-    this.LOG_COOLDOWN = 5 * 60 * 1000 // 5 minutes in milliseconds
+    this.lastLoggedDetection = new Map()
+    this.LOG_COOLDOWN = 5 * 60 * 1000
     
-    // Track current active alert - ONLY ONE ALERT AT A TIME
     this.currentAlert = null
+    
+    // Image capture canvas
+    this.captureCanvas = null
   }
 
   reset() {
@@ -104,15 +105,13 @@ class DetectionService {
           }
           
           this.playAlertSound()
-          
           this.showNotification(data)
           
-          // Log detections with 5-minute cooldown per weapon+camera
-          await this.logDetectionsWithCooldown(data)
+          // Capture image and log detections
+          await this.captureAndLogDetections(data)
         }
         
         this.currentDetection = data
-        
         this.notifyListeners()
       } else {
         this.isConnected = false
@@ -125,16 +124,19 @@ class DetectionService {
     }
   }
 
-  async logDetectionsWithCooldown(detection) {
+  async captureAndLogDetections(detection) {
     if (!this.token) {
       console.log('⚠️ No token available for logging detection')
       return
     }
     
     const now = Date.now()
-    const cameraId = 1 // Default camera ID
+    const cameraId = 1
     
     try {
+      // Capture image from video stream
+      const imageData = await this.captureImageFromStream()
+      
       for (const [weaponType, data] of Object.entries(detection.objects)) {
         const count = data.count || 0
         const confidences = data.confidences || []
@@ -143,7 +145,6 @@ class DetectionService {
           const normalizedType = this.normalizeWeaponType(weaponType)
           const logKey = `${cameraId}:${normalizedType}`
           
-          // Check if we've logged this weapon+camera recently
           const lastLogged = this.lastLoggedDetection.get(logKey)
           
           if (lastLogged && (now - lastLogged) < this.LOG_COOLDOWN) {
@@ -154,9 +155,8 @@ class DetectionService {
           
           const avgConfidence = confidences.reduce((a, b) => a + b, 0) / confidences.length
           
-          console.log(`📝 Logging detection: ${normalizedType} (${(avgConfidence * 100).toFixed(1)}% confidence)`)
+          console.log(`📝 Logging detection with image: ${normalizedType} (${(avgConfidence * 100).toFixed(1)}% confidence)`)
           
-          // Log to backend
           const response = await fetch('/api/log-detection', {
             method: 'POST',
             headers: {
@@ -166,7 +166,8 @@ class DetectionService {
             body: JSON.stringify({
               camera_id: cameraId,
               weapon_type: normalizedType,
-              confidence_score: avgConfidence
+              confidence_score: avgConfidence,
+              image: imageData  // Base64 image data
             })
           })
           
@@ -174,12 +175,14 @@ class DetectionService {
             const result = await response.json()
             console.log(`✅ ${result.message}`)
             
-            // If a NEW log was created, update our cooldown tracker
+            if (result.image_path) {
+              console.log(`📸 Image saved: ${result.image_path}`)
+            }
+            
             if (result.is_new_log) {
               this.lastLoggedDetection.set(logKey, now)
               console.log(`🕐 Cooldown started for ${logKey}`)
               
-              // Clean up old entries (older than cooldown period)
               for (const [key, timestamp] of this.lastLoggedDetection.entries()) {
                 if (now - timestamp > this.LOG_COOLDOWN) {
                   this.lastLoggedDetection.delete(key)
@@ -187,7 +190,6 @@ class DetectionService {
               }
             }
             
-            // If a NEW incident was created, REPLACE current alert
             if (result.incident_id && result.is_new_incident) {
               console.log(`🚨 NEW INCIDENT #${result.incident_id} created for ${normalizedType}`)
               await this.fetchAndSetIncidentAlert(result.incident_id)
@@ -197,13 +199,49 @@ class DetectionService {
             console.error(`❌ Failed to log ${normalizedType} detection:`, error)
           }
           
-          // Small delay between requests
           await new Promise(resolve => setTimeout(resolve, 100))
         }
       }
     } catch (error) {
-      console.error('Error logging detections to backend:', error)
+      console.error('Error capturing and logging detections:', error)
     }
+  }
+
+  async captureImageFromStream() {
+    return new Promise((resolve) => {
+      try {
+        // Find the video stream element
+        const videoStream = document.querySelector('.video-stream')
+        
+        if (!videoStream) {
+          console.warn('⚠️ No video stream found for image capture')
+          resolve(null)
+          return
+        }
+        
+        // Create canvas if it doesn't exist
+        if (!this.captureCanvas) {
+          this.captureCanvas = document.createElement('canvas')
+        }
+        
+        // Set canvas size to match video
+        this.captureCanvas.width = videoStream.naturalWidth || videoStream.width || 640
+        this.captureCanvas.height = videoStream.naturalHeight || videoStream.height || 480
+        
+        // Draw current frame to canvas
+        const ctx = this.captureCanvas.getContext('2d')
+        ctx.drawImage(videoStream, 0, 0, this.captureCanvas.width, this.captureCanvas.height)
+        
+        // Convert canvas to base64
+        const imageData = this.captureCanvas.toDataURL('image/jpeg', 0.8)
+        
+        console.log('📸 Captured frame from video stream')
+        resolve(imageData)
+      } catch (error) {
+        console.error('Error capturing image:', error)
+        resolve(null)
+      }
+    })
   }
 
   async fetchAndSetIncidentAlert(incidentId) {
@@ -217,9 +255,8 @@ class DetectionService {
       if (response.ok) {
         const data = await response.json()
         
-        // 🔥 NEW ALERT REPLACES OLD ALERT (not queued)
         this.currentAlert = {
-          id: incidentId, // Add ID for tracking
+          id: incidentId,
           incident: data.incident,
           timestamp: Date.now()
         }
