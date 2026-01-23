@@ -1,3 +1,4 @@
+<!-- src/tabs/StreamTab.vue - FIXED WITH AUTO-SAVE -->
 <template>
   <div class="stream-tab">
     <!-- Camera Selector -->
@@ -18,7 +19,7 @@
 
     <!-- Weapon Preferences -->
     <div class="stream-controls">
-      <h2>⚙️ Weapon Detection Preferences</h2>
+      <h2>⚙️ Detection Preferences</h2>
       <div v-if="weaponPreferences.length === 0" class="loading-preferences">
         Loading weapon preferences...
       </div>
@@ -27,23 +28,48 @@
           <input 
             type="checkbox" 
             :checked="pref.is_enabled"
-            @change="updateWeaponPreference(pref.weapon_type, $event.target.checked)"
+            @change="togglePreference(pref)"
           />
           <span class="weapon-name">{{ formatWeaponName(pref.weapon_type) }}</span>
         </label>
       </div>
-      <button @click="savePreferences" class="save-preferences-btn" :disabled="isSaving">
-        {{ isSaving ? 'Saving...' : 'Save Preferences' }}
-      </button>
     </div>
     
-    <!-- Video Stream -->
+    <!-- Video Stream with Overlay -->
     <div class="stream-container">
       <h3 class="stream-title">
         {{ selectedCamera?.camera_name || 'Select a camera' }}
       </h3>
       <p class="stream-location">{{ selectedCamera?.location }}</p>
-      <img v-if="selectedCamera" :src="videoUrl" class="video-stream" alt="AI Stream" />
+      
+      <div v-if="selectedCamera" class="video-wrapper">
+        <img :src="videoUrl" class="video-stream" alt="AI Stream" ref="videoElement" />
+        
+        <!-- Canvas overlay for bounding boxes -->
+        <canvas 
+          ref="canvasElement"
+          class="bounding-box-canvas"
+          :width="canvasWidth"
+          :height="canvasHeight"
+        ></canvas>
+      </div>
+      
+      <!-- Detection Status Indicator -->
+      <div class="detection-status">
+        <div :class="['status-indicator', detectionState.detected ? 'detecting' : 'clear']">
+          <span class="status-dot"></span>
+          <span class="status-text">
+            {{ detectionState.detected ? '🚨 WEAPON DETECTED' : '✓ No Threats Detected' }}
+          </span>
+        </div>
+        <div v-if="detectionState.detected" class="detected-weapons">
+          <div v-for="(data, weapon) in detectionState.objects" :key="weapon" class="weapon-item">
+            <span class="weapon-icon">⚠️</span>
+            <span class="weapon-label">{{ formatWeaponName(weapon) }}</span>
+            <span class="weapon-confidence">{{ getAverageConfidence(data) }}%</span>
+          </div>
+        </div>
+      </div>
       
       <!-- Recent Detections -->
       <div class="recent-detections">
@@ -64,7 +90,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import detectionService from '../services/detectionService.js'
 
 const props = defineProps({
   token: String
@@ -75,6 +102,38 @@ const selectedCamera = ref(null)
 const weaponPreferences = ref([])
 const allRecentDetections = ref([])
 const isSaving = ref(false)
+const detectionState = ref({
+  detected: false,
+  objects: {},
+  timestamp: null
+})
+
+const videoElement = ref(null)
+const canvasElement = ref(null)
+const canvasWidth = ref(640)
+const canvasHeight = ref(480)
+
+let unsubscribe = null
+let animationFrameId = null
+let saveTimeout = null
+
+// WEAPON TYPE MAPPING
+const WEAPON_TYPE_MAP = {
+  'gun': 'pistol',
+  'heavy-weapon': 'heavy_weapon',
+  'knife': 'knife',
+  'pistol': 'pistol',
+  'heavy_weapon': 'heavy_weapon'
+}
+
+// Weapon colors
+const weaponColors = {
+  'gun': '#FF0000',
+  'pistol': '#FF0000',
+  'heavy-weapon': '#FF00FF',
+  'heavy_weapon': '#FF00FF',
+  'knife': '#FFFF00'
+}
 
 const videoUrl = computed(() => {
   if (!selectedCamera.value) return ''
@@ -87,15 +146,259 @@ const recentDetections = computed(() => {
 })
 
 onMounted(async () => {
+  console.log('🔵 StreamTab mounted')
+  
+  // Load preferences FIRST before subscribing to detections
+  await loadWeaponPreferences()
+  
   await Promise.all([
     loadCameras(),
-    loadWeaponPreferences(),
     loadRecentDetections()
   ])
   
+  // Subscribe to detection service for real-time updates
+  unsubscribe = detectionService.subscribe((state) => {
+    detectionState.value = state.currentDetection
+    drawBoundingBoxes()
+  })
+  
+  // Setup canvas resize observer
+  setupCanvasResize()
+  
+  // Start drawing loop
+  startDrawingLoop()
+  
   // Refresh detections every 10 seconds
   setInterval(loadRecentDetections, 10000)
+  
+  console.log('✅ StreamTab initialization complete')
 })
+
+onBeforeUnmount(() => {
+  console.log('🔴 StreamTab unmounting')
+  
+  if (unsubscribe) {
+    unsubscribe()
+  }
+  
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId)
+  }
+  
+  if (saveTimeout) {
+    clearTimeout(saveTimeout)
+  }
+})
+
+function setupCanvasResize() {
+  const updateSize = () => {
+    if (videoElement.value) {
+      canvasWidth.value = videoElement.value.clientWidth || 640
+      canvasHeight.value = videoElement.value.clientHeight || 480
+      nextTick(() => drawBoundingBoxes())
+    }
+  }
+  
+  window.addEventListener('resize', updateSize)
+  setTimeout(updateSize, 100)
+  
+  onBeforeUnmount(() => {
+    window.removeEventListener('resize', updateSize)
+  })
+}
+
+function startDrawingLoop() {
+  const draw = () => {
+    drawBoundingBoxes()
+    animationFrameId = requestAnimationFrame(draw)
+  }
+  animationFrameId = requestAnimationFrame(draw)
+}
+
+function drawBoundingBoxes() {
+  const canvas = canvasElement.value
+  if (!canvas) return
+  
+  const ctx = canvas.getContext('2d')
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  
+  if (!detectionState.value || !detectionState.value.detected) {
+    return
+  }
+  
+  const scaleX = canvas.width / 640
+  const scaleY = canvas.height / 480
+  
+  // Draw boxes for each detected weapon
+  for (const [weaponType, data] of Object.entries(detectionState.value.objects || {})) {
+    if (!shouldShowWeapon(weaponType)) {
+      continue
+    }
+    
+    const boxes = data.boxes || []
+    const confidences = Array.isArray(data.confidences) 
+      ? data.confidences 
+      : [data.confidences]
+    
+    const color = weaponColors[weaponType] || '#00FF00'
+    
+    boxes.forEach((box, index) => {
+      const [x1, y1, x2, y2] = box
+      const confidence = confidences[index] || confidences[0] || 0
+      
+      const scaledX = x1 * scaleX
+      const scaledY = y1 * scaleY
+      const scaledWidth = (x2 - x1) * scaleX
+      const scaledHeight = (y2 - y1) * scaleY
+      
+      // Draw bounding box
+      ctx.strokeStyle = color
+      ctx.lineWidth = 3
+      ctx.strokeRect(scaledX, scaledY, scaledWidth, scaledHeight)
+      
+      // Draw label background
+      const label = `${formatWeaponName(weaponType)} ${(confidence * 100).toFixed(0)}%`
+      ctx.font = 'bold 14px Arial'
+      const textMetrics = ctx.measureText(label)
+      const textHeight = 20
+      
+      ctx.fillStyle = color
+      ctx.fillRect(scaledX, scaledY - textHeight, textMetrics.width + 10, textHeight)
+      
+      // Draw label text
+      ctx.fillStyle = '#000000'
+      ctx.fillText(label, scaledX + 5, scaledY - 5)
+      
+      // Draw corner markers
+      const cornerSize = 15
+      ctx.lineWidth = 4
+      
+      // Top-left
+      ctx.beginPath()
+      ctx.moveTo(scaledX, scaledY + cornerSize)
+      ctx.lineTo(scaledX, scaledY)
+      ctx.lineTo(scaledX + cornerSize, scaledY)
+      ctx.stroke()
+      
+      // Top-right
+      ctx.beginPath()
+      ctx.moveTo(scaledX + scaledWidth - cornerSize, scaledY)
+      ctx.lineTo(scaledX + scaledWidth, scaledY)
+      ctx.lineTo(scaledX + scaledWidth, scaledY + cornerSize)
+      ctx.stroke()
+      
+      // Bottom-left
+      ctx.beginPath()
+      ctx.moveTo(scaledX, scaledY + scaledHeight - cornerSize)
+      ctx.lineTo(scaledX, scaledY + scaledHeight)
+      ctx.lineTo(scaledX + cornerSize, scaledY + scaledHeight)
+      ctx.stroke()
+      
+      // Bottom-right
+      ctx.beginPath()
+      ctx.moveTo(scaledX + scaledWidth - cornerSize, scaledY + scaledHeight)
+      ctx.lineTo(scaledX + scaledWidth, scaledY + scaledHeight)
+      ctx.lineTo(scaledX + scaledWidth, scaledY + scaledHeight - cornerSize)
+      ctx.stroke()
+    })
+  }
+}
+
+function shouldShowWeapon(weaponType) {
+  const normalized = normalizeWeaponType(weaponType)
+  const pref = weaponPreferences.value.find(p => p.weapon_type === normalized)
+  return pref ? pref.is_enabled : true
+}
+
+function normalizeWeaponType(weaponType) {
+  const lowercased = weaponType.toLowerCase()
+  return WEAPON_TYPE_MAP[lowercased] || lowercased
+}
+
+// Toggle preference and auto-save
+function togglePreference(pref) {
+  console.log(`🔄 Toggling ${pref.weapon_type} from ${pref.is_enabled} to ${!pref.is_enabled}`)
+  
+  // Toggle the value
+  pref.is_enabled = !pref.is_enabled
+  
+  // Redraw immediately to reflect changes
+  drawBoundingBoxes()
+  
+  // Clear any existing timeout
+  if (saveTimeout) {
+    clearTimeout(saveTimeout)
+  }
+  
+  // Debounce the save by 300ms
+  saveTimeout = setTimeout(async () => {
+    console.log('💾 Auto-saving preferences:', JSON.stringify(weaponPreferences.value, null, 2))
+    
+    try {
+      const res = await fetch('/api/weapon-preferences', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${props.token}` 
+        },
+        body: JSON.stringify({ preferences: weaponPreferences.value })
+      })
+      
+      if (res.ok) {
+        console.log('✅ Preferences auto-saved successfully')
+      } else {
+        console.error('❌ Failed to auto-save preferences')
+      }
+    } catch (error) {
+      console.error('❌ Error auto-saving preferences:', error)
+    }
+  }, 300)
+}
+
+// AUTO-SAVE function - saves immediately when checkbox is toggled
+async function autoSavePreferences() {
+  console.log('🔄 Auto-saving preferences...')
+  
+  // Redraw immediately to reflect changes
+  drawBoundingBoxes()
+  
+  // Clear any existing timeout
+  if (saveTimeout) {
+    clearTimeout(saveTimeout)
+  }
+  
+  // Debounce the save by 500ms in case user toggles multiple checkboxes quickly
+  saveTimeout = setTimeout(async () => {
+    isSaving.value = true
+    
+    console.log('💾 Saving preferences:', JSON.stringify(weaponPreferences.value, null, 2))
+    
+    try {
+      const res = await fetch('/api/weapon-preferences', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${props.token}` 
+        },
+        body: JSON.stringify({ preferences: weaponPreferences.value })
+      })
+      
+      if (res.ok) {
+        console.log('✅ Weapon preferences saved successfully')
+        // Show brief success indicator
+        setTimeout(() => {
+          isSaving.value = false
+        }, 500)
+      } else {
+        console.error('Failed to save preferences')
+        isSaving.value = false
+      }
+    } catch (error) {
+      console.error('Could not save preferences:', error)
+      isSaving.value = false
+    }
+  }, 500)
+}
 
 async function loadCameras() {
   try {
@@ -109,7 +412,6 @@ async function loadCameras() {
     }
   } catch (error) {
     console.error('Could not load cameras:', error)
-    // Create default camera if API fails
     cameras.value = [{
       id: 1,
       camera_name: 'Main Entrance',
@@ -124,6 +426,8 @@ function selectCamera(camera) {
 }
 
 async function loadWeaponPreferences() {
+  console.log('📥 Loading weapon preferences...')
+  
   try {
     const res = await fetch('/api/weapon-preferences', {
       headers: { 'Authorization': `Bearer ${props.token}` }
@@ -131,51 +435,53 @@ async function loadWeaponPreferences() {
     
     if (res.ok) {
       const data = await res.json()
-      weaponPreferences.value = data.preferences
+      console.log('📦 Raw preferences from API:', JSON.stringify(data, null, 2))
       
-      // Create defaults if empty
-      if (weaponPreferences.value.length === 0) {
+      if (data.preferences && data.preferences.length > 0) {
+        // Map the preferences and ensure is_enabled is a boolean
+        weaponPreferences.value = data.preferences.map(pref => ({
+          weapon_type: pref.weapon_type,
+          is_enabled: pref.is_enabled === true || pref.is_enabled === 1 || pref.is_enabled === '1'
+        }))
+        
+        console.log('✅ Weapon preferences loaded:', JSON.stringify(weaponPreferences.value, null, 2))
+      } else {
+        // Create default preferences if none exist
+        console.log('⚠️ No preferences found, creating defaults...')
         weaponPreferences.value = [
           { weapon_type: 'knife', is_enabled: true },
           { weapon_type: 'pistol', is_enabled: true },
           { weapon_type: 'heavy_weapon', is_enabled: true }
         ]
+        
+        // Save the defaults immediately
+        await fetch('/api/weapon-preferences', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${props.token}` 
+          },
+          body: JSON.stringify({ preferences: weaponPreferences.value })
+        })
       }
+    } else {
+      console.error('Failed to load preferences:', res.status)
+      // Use defaults on error
+      weaponPreferences.value = [
+        { weapon_type: 'knife', is_enabled: true },
+        { weapon_type: 'pistol', is_enabled: true },
+        { weapon_type: 'heavy_weapon', is_enabled: true }
+      ]
     }
   } catch (error) {
     console.error('Could not load weapon preferences:', error)
+    // Use defaults on error
+    weaponPreferences.value = [
+      { weapon_type: 'knife', is_enabled: true },
+      { weapon_type: 'pistol', is_enabled: true },
+      { weapon_type: 'heavy_weapon', is_enabled: true }
+    ]
   }
-}
-
-function updateWeaponPreference(weaponType, enabled) {
-  const pref = weaponPreferences.value.find(p => p.weapon_type === weaponType)
-  if (pref) {
-    pref.is_enabled = enabled
-  }
-}
-
-async function savePreferences() {
-  isSaving.value = true
-  
-  try {
-    const res = await fetch('/api/weapon-preferences', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${props.token}` 
-      },
-      body: JSON.stringify({ preferences: weaponPreferences.value })
-    })
-    
-    if (res.ok) {
-      // Show success briefly
-      setTimeout(() => {}, 1000)
-    }
-  } catch (error) {
-    console.error('Could not save preferences:', error)
-  }
-  
-  isSaving.value = false
 }
 
 async function loadRecentDetections() {
@@ -193,11 +499,22 @@ async function loadRecentDetections() {
   }
 }
 
+function getAverageConfidence(data) {
+  const confidences = Array.isArray(data.confidences) 
+    ? data.confidences 
+    : [data.confidences]
+  
+  const avg = confidences.reduce((a, b) => a + b, 0) / confidences.length
+  return Math.round(avg * 100)
+}
+
 function formatWeaponName(weaponType) {
   const names = {
     'knife': 'Knife',
     'pistol': 'Pistol',
-    'heavy_weapon': 'Heavy Weapon'
+    'gun': 'Pistol',
+    'heavy_weapon': 'Heavy Weapon',
+    'heavy-weapon': 'Heavy Weapon'
   }
   return names[weaponType] || weaponType
 }
@@ -293,7 +610,6 @@ function formatTime(timeString) {
   display: flex;
   flex-wrap: wrap;
   gap: 15px;
-  margin-bottom: 20px;
 }
 
 .weapon-checkbox {
@@ -314,6 +630,7 @@ function formatTime(timeString) {
   width: 18px;
   height: 18px;
   cursor: pointer;
+  accent-color: #4a90e2;
 }
 
 .weapon-name {
@@ -321,23 +638,8 @@ function formatTime(timeString) {
   color: #2c3e50;
 }
 
-.save-preferences-btn {
-  padding: 10px 20px;
-  background-color: #27ae60;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-}
-
-.save-preferences-btn:hover:not(:disabled) {
-  background-color: #219a52;
-}
-
-.save-preferences-btn:disabled {
-  background-color: #bdc3c7;
-  cursor: not-allowed;
+.save-indicator {
+  display: none;
 }
 
 .stream-container {
@@ -359,12 +661,111 @@ function formatTime(timeString) {
   margin-bottom: 20px;
 }
 
+.video-wrapper {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
 .video-stream {
+  display: block;
   max-width: 100%;
   max-height: 60vh;
-  border-radius: 8px;
   border: 1px solid #ddd;
+}
+
+.bounding-box-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.detection-status {
   margin-bottom: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 1.1rem;
+  transition: all 0.3s ease;
+}
+
+.status-indicator.clear {
+  background: #d4edda;
+  color: #27ae60;
+}
+
+.status-indicator.detecting {
+  background: #f8d7da;
+  color: #e74c3c;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: blink 1s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 50%, 100% { opacity: 1; }
+  25%, 75% { opacity: 0.3; }
+}
+
+.detected-weapons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+  justify-content: center;
+}
+
+.weapon-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: white;
+  border-radius: 6px;
+  border: 2px solid #e74c3c;
+  font-size: 0.9rem;
+}
+
+.weapon-icon {
+  font-size: 1.2rem;
+}
+
+.weapon-label {
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.weapon-confidence {
+  color: #e74c3c;
+  font-weight: 700;
 }
 
 .recent-detections {
@@ -418,6 +819,11 @@ function formatTime(timeString) {
   
   .weapon-filters {
     flex-direction: column;
+  }
+  
+  .detected-weapons {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

@@ -23,6 +23,10 @@ class DetectionService {
     
     // Image capture canvas
     this.captureCanvas = null
+    
+    // Stream dimensions
+    this.streamWidth = 640
+    this.streamHeight = 480
   }
 
   reset() {
@@ -138,8 +142,8 @@ class DetectionService {
       const imageData = await this.captureImageFromStream()
       
       for (const [weaponType, data] of Object.entries(detection.objects)) {
-        const count = data.count || 0
-        const confidences = data.confidences || []
+        const confidences = Array.isArray(data.confidences) ? data.confidences : [data.confidences]
+        const count = confidences.length
         
         if (count > 0 && confidences.length > 0) {
           const normalizedType = this.normalizeWeaponType(weaponType)
@@ -167,7 +171,7 @@ class DetectionService {
               camera_id: cameraId,
               weapon_type: normalizedType,
               confidence_score: avgConfidence,
-              image: imageData  // Base64 image data
+              image: imageData
             })
           })
           
@@ -210,7 +214,6 @@ class DetectionService {
   async captureImageFromStream() {
     return new Promise((resolve) => {
       try {
-        // Find the video stream element
         const videoStream = document.querySelector('.video-stream')
         
         if (!videoStream) {
@@ -219,20 +222,16 @@ class DetectionService {
           return
         }
         
-        // Create canvas if it doesn't exist
         if (!this.captureCanvas) {
           this.captureCanvas = document.createElement('canvas')
         }
         
-        // Set canvas size to match video
         this.captureCanvas.width = videoStream.naturalWidth || videoStream.width || 640
         this.captureCanvas.height = videoStream.naturalHeight || videoStream.height || 480
         
-        // Draw current frame to canvas
         const ctx = this.captureCanvas.getContext('2d')
         ctx.drawImage(videoStream, 0, 0, this.captureCanvas.width, this.captureCanvas.height)
         
-        // Convert canvas to base64
         const imageData = this.captureCanvas.toDataURL('image/jpeg', 0.8)
         
         console.log('📸 Captured frame from video stream')

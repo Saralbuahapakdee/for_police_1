@@ -328,22 +328,51 @@ def get_weapon_preferences(user_id):
         cursor = conn.cursor()
         cursor.execute('''SELECT weapon_type, is_enabled FROM weapon_preferences 
                          WHERE user_id = ? ORDER BY weapon_type''', (user_id,))
-        return cursor.fetchall()
+        prefs = cursor.fetchall()
+        
+        # If no preferences exist, create defaults
+        if not prefs:
+            print(f"No preferences found for user {user_id}, creating defaults...")
+            for weapon in DEFAULT_WEAPONS:
+                cursor.execute('''INSERT INTO weapon_preferences 
+                                (user_id, weapon_type, is_enabled) VALUES (?, ?, ?)''',
+                              (user_id, weapon, True))
+            conn.commit()
+            
+            # Fetch the newly created preferences
+            cursor.execute('''SELECT weapon_type, is_enabled FROM weapon_preferences 
+                             WHERE user_id = ? ORDER BY weapon_type''', (user_id,))
+            prefs = cursor.fetchall()
+        
+        return prefs
 
 
 def update_weapon_preferences(user_id, preferences):
-    """Update weapon preferences"""
+    """Update weapon preferences - FIXED to use INSERT OR REPLACE"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
+        
+        print(f"Updating preferences for user {user_id}: {preferences}")
+        
         for pref in preferences:
             weapon_type = pref.get('weapon_type')
             is_enabled = pref.get('is_enabled', True)
             
-            cursor.execute('''UPDATE weapon_preferences 
-                             SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP 
-                             WHERE user_id = ? AND weapon_type = ?''',
-                          (is_enabled, user_id, weapon_type))
+            # Use INSERT OR REPLACE to handle both new and existing preferences
+            cursor.execute('''INSERT OR REPLACE INTO weapon_preferences 
+                             (user_id, weapon_type, is_enabled, updated_at) 
+                             VALUES (
+                                 ?, 
+                                 ?, 
+                                 ?,
+                                 CURRENT_TIMESTAMP
+                             )''',
+                          (user_id, weapon_type, is_enabled))
+            
+            print(f"  - {weapon_type}: {'enabled' if is_enabled else 'disabled'}")
+        
         conn.commit()
+        print(f"✅ Saved {len(preferences)} preferences for user {user_id}")
 
 
 def get_cameras_list():

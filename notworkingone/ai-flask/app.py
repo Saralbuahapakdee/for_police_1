@@ -1,3 +1,5 @@
+# notworkingone/ai-flask/app.py - Updated to handle bounding boxes
+
 from flask import Flask, Response
 import time
 import cv2
@@ -34,22 +36,46 @@ def on_message(client, userdata, msg):
         print(f"Payload: {json.dumps(parsed, indent=2)}")
         print(f"{'='*50}\n")
         
+        # Process and normalize the detection data
+        processed_objects = {}
+        
+        if parsed.get("objects"):
+            for weapon_type, data in parsed.get("objects", {}).items():
+                # Normalize confidences to always be a list
+                confidences = data.get("confidences", [])
+                if not isinstance(confidences, list):
+                    confidences = [confidences]
+                
+                # Get boxes (default to empty list if not provided)
+                boxes = data.get("boxes", [])
+                
+                # Count number of detections
+                count = len(confidences) if confidences else 0
+                
+                processed_objects[weapon_type] = {
+                    "count": count,
+                    "confidences": confidences,
+                    "boxes": boxes  # [[x1, y1, x2, y2], ...]
+                }
+        
         # Update latest detection with thread safety
         with detection_lock:
             latest_detection = {
                 "detected": parsed.get("detected", False),
-                "objects": parsed.get("objects", {}),
+                "objects": processed_objects,
                 "timestamp": datetime.now().isoformat()
             }
             
         # Log detection details
-        if parsed.get("detected") and parsed.get("objects"):
+        if parsed.get("detected") and processed_objects:
             print("🚨 WEAPON DETECTED!")
-            for weapon_type, data in parsed.get("objects", {}).items():
+            for weapon_type, data in processed_objects.items():
                 count = data.get("count", 0)
                 confidences = data.get("confidences", [])
+                boxes = data.get("boxes", [])
                 print(f"  - {weapon_type}: {count} detected")
                 print(f"    Confidences: {confidences}")
+                print(f"    Boxes: {boxes}")
         else:
             print("✓ No threats detected")
             
@@ -57,6 +83,8 @@ def on_message(client, userdata, msg):
         print(f"Failed to parse JSON: {payload_text}")
     except Exception as e:
         print(f"Error processing message: {e}")
+        import traceback
+        traceback.print_exc()
 
 def get_detection_overlay_text():
     """Generate text overlay for video stream based on latest detection"""
@@ -83,8 +111,8 @@ def generate():
     def open_capture():
         """Open the RTSP stream with low-latency settings."""
         c = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
-        c.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # keep only the latest frame in buffer
-        c.set(cv2.CAP_PROP_FPS, 15)        # optional: cap FPS to reduce load
+        c.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        c.set(cv2.CAP_PROP_FPS, 15)
         return c if c.isOpened() else None
 
     while True:
@@ -111,7 +139,7 @@ def generate():
         with detection_lock:
             is_detected = latest_detection["detected"] and latest_detection["objects"]
         
-        text_color = (0, 0, 255) if is_detected else (0, 255, 0)  # Red if detected, Green if clear
+        text_color = (0, 0, 255) if is_detected else (0, 255, 0)
         
         # Add text overlay to frame
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -157,7 +185,7 @@ def generate():
             cv2.LINE_AA,
         )
 
-        # Encode frame (lower quality to speed up)
+        # Encode frame
         ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
         if not ok:
             continue
@@ -171,7 +199,7 @@ def stream():
 
 @app.get("/detection")
 def get_detection():
-    """API endpoint to get latest detection data"""
+    """API endpoint to get latest detection data including bounding boxes"""
     with detection_lock:
         return {
             "detected": latest_detection["detected"],
