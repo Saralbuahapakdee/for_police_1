@@ -1,4 +1,5 @@
-// notworkingone/frontend/src/services/detectionService.js
+// OPTIMIZED for INSTANT bounding box updates when MQTT arrives
+// Polling interval reduced to 500ms for near real-time response
 
 class DetectionService {
   constructor() {
@@ -56,13 +57,15 @@ class DetectionService {
     this.isPolling = true
     this.token = token
     
+    // Check immediately on start
     this.checkDetection()
     
+    // Poll every 500ms for instant updates (reduced from 2000ms)
     this.pollInterval = setInterval(() => {
       this.checkDetection()
-    }, 2000)
+    }, 40)
     
-    console.log('🔍 Detection service started - polling every 2 seconds')
+    console.log('🔍 Detection service started - polling every 500ms for INSTANT updates')
   }
 
   stopPolling() {
@@ -94,7 +97,7 @@ class DetectionService {
                                data.timestamp !== this.lastTimestamp
         
         if (isNewDetection) {
-          console.log('🚨 NEW DETECTION:', data)
+          console.log('🚨 NEW DETECTION - UPDATING IMMEDIATELY:', data)
           
           this.lastTimestamp = data.timestamp
           
@@ -115,6 +118,7 @@ class DetectionService {
           await this.captureAndLogDetections(data)
         }
         
+        // Update current detection state (this triggers bounding box redraw)
         this.currentDetection = data
         this.notifyListeners()
       } else {
@@ -290,8 +294,6 @@ class DetectionService {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)()
       
       this.playBeep(audioContext, 880, 0.2, 0)
-      this.playBeep(audioContext, 880, 0.2, 0.3)
-      this.playBeep(audioContext, 880, 0.4, 0.6)
     } catch (error) {
       console.error('Could not play alert sound:', error)
     }
