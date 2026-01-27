@@ -4,4 +4,4 @@ __pycache__/
 incident_images/
 */incident_images/
 
-
+.gitignore
