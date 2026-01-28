@@ -22,7 +22,6 @@
           <option value="custom">Custom Range</option>
         </select>
 
-        <!-- Quick Presets -->
         <select v-if="dateRangeType === 'preset'" v-model="filterDays" @change="loadLogs" class="filter-select">
           <option :value="1">Today</option>
           <option :value="7">Last 7 days</option>
@@ -34,7 +33,6 @@
           <option :value="365">Last year</option>
         </select>
 
-        <!-- Custom Date Range -->
         <template v-if="dateRangeType === 'custom'">
           <input 
             type="date" 
@@ -42,7 +40,6 @@
             @change="loadLogs"
             :max="endDate"
             class="date-input"
-            title="Start Date"
           />
           <input 
             type="date" 
@@ -51,7 +48,6 @@
             :min="startDate"
             :max="today"
             class="date-input"
-            title="End Date"
           />
         </template>
         
@@ -79,6 +75,10 @@
         <div class="stat-label">Weapon Types</div>
         <div class="stat-value">{{ uniqueWeapons }}</div>
       </div>
+      <div class="stat-card">
+        <div class="stat-label">Average Confidence</div>
+        <div class="stat-value">{{ avgConfidence }}%</div>
+      </div>
     </div>
 
     <div class="logs-table-container">
@@ -87,22 +87,40 @@
           <tr>
             <th @click="sortBy('detection_time')" class="sortable">
               Date & Time 
-              <span v-if="sortColumn === 'detection_time'">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+              <span v-if="sortColumn === 'detection_time'" class="sort-icon">
+                {{ sortDirection === 'asc' ? '▲' : '▼' }}
+              </span>
             </th>
             <th @click="sortBy('camera_name')" class="sortable">
               Camera
-              <span v-if="sortColumn === 'camera_name'">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+              <span v-if="sortColumn === 'camera_name'" class="sort-icon">
+                {{ sortDirection === 'asc' ? '▲' : '▼' }}
+              </span>
             </th>
-            <th>Location</th>
+            <th @click="sortBy('location')" class="sortable">
+              Location
+              <span v-if="sortColumn === 'location'" class="sort-icon">
+                {{ sortDirection === 'asc' ? '▲' : '▼' }}
+              </span>
+            </th>
             <th @click="sortBy('weapon_type')" class="sortable">
               Weapon Type
-              <span v-if="sortColumn === 'weapon_type'">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+              <span v-if="sortColumn === 'weapon_type'" class="sort-icon">
+                {{ sortDirection === 'asc' ? '▲' : '▼' }}
+              </span>
             </th>
             <th @click="sortBy('confidence_score')" class="sortable">
               Confidence
-              <span v-if="sortColumn === 'confidence_score'">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+              <span v-if="sortColumn === 'confidence_score'" class="sort-icon">
+                {{ sortDirection === 'asc' ? '▲' : '▼' }}
+              </span>
             </th>
-            <th>Detected By</th>
+            <th @click="sortBy('username')" class="sortable">
+              Detected By
+              <span v-if="sortColumn === 'username'" class="sort-icon">
+                {{ sortDirection === 'asc' ? '▲' : '▼' }}
+              </span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -150,7 +168,6 @@ const dateRangeType = ref('preset')
 const filterDays = ref(7)
 const isLoading = ref(false)
 
-// Date range
 const today = new Date().toISOString().split('T')[0]
 const startDate = ref(getDateDaysAgo(7))
 const endDate = ref(today)
@@ -165,17 +182,6 @@ function getDateDaysAgo(days) {
   return date.toISOString().split('T')[0]
 }
 
-const dateRangeDisplay = computed(() => {
-  if (dateRangeType.value === 'preset') {
-    if (filterDays.value === 1) return 'Today'
-    if (filterDays.value === 7) return 'Last 7 days'
-    if (filterDays.value === 30) return 'Last 30 days'
-    return `Last ${filterDays.value} days`
-  } else {
-    return `${formatDate(startDate.value)} - ${formatDate(endDate.value)}`
-  }
-})
-
 const uniqueCameras = computed(() => {
   const cameras = new Set(logs.value.map(log => log.camera_id))
   return cameras.size
@@ -186,22 +192,42 @@ const uniqueWeapons = computed(() => {
   return weapons.size
 })
 
+const avgConfidence = computed(() => {
+  if (logs.value.length === 0) return 0
+  const sum = logs.value.reduce((acc, log) => acc + (log.confidence_score || 0), 0)
+  return Math.round((sum / logs.value.length) * 100)
+})
+
 const sortedLogs = computed(() => {
   const sorted = [...logs.value].sort((a, b) => {
     let aVal = a[sortColumn.value]
     let bVal = b[sortColumn.value]
     
+    // Handle date sorting
     if (sortColumn.value === 'detection_time') {
       aVal = new Date(aVal).getTime()
       bVal = new Date(bVal).getTime()
     }
     
+    // Handle numeric sorting
+    if (sortColumn.value === 'confidence_score') {
+      aVal = aVal || 0
+      bVal = bVal || 0
+    }
+    
+    // Handle string sorting (case-insensitive)
+    if (typeof aVal === 'string' && typeof bVal === 'string') {
+      aVal = aVal.toLowerCase()
+      bVal = bVal.toLowerCase()
+    }
+    
     if (sortDirection.value === 'asc') {
-      return aVal > bVal ? 1 : -1
+      return aVal > bVal ? 1 : aVal < bVal ? -1 : 0
     } else {
-      return aVal < bVal ? 1 : -1
+      return aVal < bVal ? 1 : aVal > bVal ? -1 : 0
     }
   })
+  
   return sorted
 })
 
@@ -209,6 +235,15 @@ onMounted(async () => {
   await loadCameras()
   await loadLogs()
 })
+
+function sortBy(column) {
+  if (sortColumn.value === column) {
+    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortColumn.value = column
+    sortDirection.value = column === 'detection_time' ? 'desc' : 'asc'
+  }
+}
 
 function handleDateRangeChange() {
   if (dateRangeType.value === 'preset') {
@@ -218,15 +253,6 @@ function handleDateRangeChange() {
     endDate.value = today
   }
   loadLogs()
-}
-
-function sortBy(column) {
-  if (sortColumn.value === column) {
-    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
-  } else {
-    sortColumn.value = column
-    sortDirection.value = 'desc'
-  }
 }
 
 async function loadCameras() {
@@ -250,7 +276,6 @@ async function loadLogs() {
     if (dateRangeType.value === 'preset') {
       url += `&days=${filterDays.value}`
     } else {
-      // Calculate days between dates
       const start = new Date(startDate.value)
       const end = new Date(endDate.value)
       const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1
@@ -267,7 +292,6 @@ async function loadLogs() {
     if (res.ok) {
       const data = await res.json()
       
-      // Filter by custom date range if needed
       if (dateRangeType.value === 'custom') {
         const start = new Date(startDate.value)
         start.setHours(0, 0, 0, 0)
@@ -297,7 +321,7 @@ function exportToCSV() {
   
   let csv = 'Date,Time,Camera,Location,Weapon Type,Confidence,Detected By\n'
   
-  logs.value.forEach(log => {
+  sortedLogs.value.forEach(log => {
     const date = new Date(log.detection_time)
     const dateStr = date.toLocaleDateString()
     const timeStr = date.toLocaleTimeString()
@@ -331,15 +355,6 @@ function formatDateTime(dateTimeString) {
     return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
   } catch {
     return dateTimeString
-  }
-}
-
-function formatDate(dateString) {
-  if (!dateString) return 'N/A'
-  try {
-    return new Date(dateString).toLocaleDateString()
-  } catch {
-    return dateString
   }
 }
 
@@ -475,10 +490,17 @@ function getConfidenceClass(score) {
 .logs-table th.sortable {
   cursor: pointer;
   user-select: none;
+  transition: background-color 0.2s ease;
 }
 
 .logs-table th.sortable:hover {
   background: #e9ecef;
+}
+
+.sort-icon {
+  margin-left: 5px;
+  color: #4a90e2;
+  font-size: 0.85rem;
 }
 
 .logs-table td {
@@ -508,13 +530,13 @@ function getConfidenceClass(score) {
 }
 
 .weapon-badge.knife {
-  background: #ffebee;
-  color: #e74c3c;
+  background: #ffebf4;
+  color: #e73c8c;
 }
 
 .weapon-badge.pistol {
-  background: #fff3e0;
-  color: #f39c12;
+  background: #e0e2ff;
+  color: #3638ca;
 }
 
 .weapon-badge.heavy_weapon {

@@ -9,7 +9,14 @@
             {{ camera.camera_name }}
           </option>
         </select>
-        
+
+        <select v-model="filterWeapon" @change="loadDashboard" class="filter-select">
+          <option :value="null">All Weapons</option>
+          <option value="knife">Knife</option>
+          <option value="pistol">Pistol</option>
+          <option value="heavy_weapon">Heavy Weapon</option>
+        </select>
+
         <select v-model="dateRangeType" @change="handleDateRangeChange" class="filter-select">
           <option value="preset">Quick Select</option>
           <option value="custom">Custom Range</option>
@@ -48,6 +55,10 @@
           />
         </template>
 
+        <button @click="exportToCSV" class="export-btn" title="Export to CSV">
+          📥 Export
+        </button>
+
         <button @click="loadDashboard" class="refresh-btn">🔄</button>
       </div>
     </div>
@@ -65,7 +76,7 @@
           <div class="card-subtitle">{{ cameraInfo }}</div>
         </div>
         <div class="summary-card">
-          <h4>Avg Confidence</h4>
+          <h4>Average Confidence</h4>
           <div class="card-value">{{ avgConfidence }}%</div>
           <div class="card-subtitle" :class="getConfidenceClass(avgConfidence / 100)">
             {{ getConfidenceLabel(avgConfidence / 100) }}
@@ -125,20 +136,35 @@
           <table class="details-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Camera</th>
-                <th>Weapon Type</th>
-                <th>Detections</th>
-                <th>Avg Confidence</th>
+                <th @click="sortBy('detection_date')" class="sortable">
+                  Date
+                  <span v-if="sortColumn === 'detection_date'">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+                </th>
+                <th @click="sortBy('camera_name')" class="sortable">
+                  Camera
+                  <span v-if="sortColumn === 'camera_name'">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+                </th>
+                <th @click="sortBy('weapon_type')" class="sortable">
+                  Weapon Type
+                  <span v-if="sortColumn === 'weapon_type'">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+                </th>
+                <th @click="sortBy('total_detections')" class="sortable">
+                  Detections
+                  <span v-if="sortColumn === 'total_detections'">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+                </th>
+                <th @click="sortBy('avg_confidence')" class="sortable">
+                  Avg Confidence
+                  <span v-if="sortColumn === 'avg_confidence'">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+                </th>
                 <th>First Detection</th>
                 <th>Last Detection</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-if="dailySummary.length === 0">
+              <tr v-if="sortedDailySummary.length === 0">
                 <td colspan="7" class="no-data">No data available</td>
               </tr>
-              <tr v-else v-for="(item, index) in dailySummary" :key="index">
+              <tr v-else v-for="(item, index) in sortedDailySummary" :key="index">
                 <td>{{ formatDate(item.detection_date) }}</td>
                 <td>{{ item.camera_name }}</td>
                 <td>
@@ -172,10 +198,15 @@ const props = defineProps({
 
 const cameras = ref([])
 const dashboardData = ref(null)
+const filterWeapon = ref(null)
 const filterCamera = ref(null)
 const dateRangeType = ref('preset')
 const filterDays = ref(7)
 const isLoading = ref(false)
+
+// Sorting
+const sortColumn = ref('detection_date')
+const sortDirection = ref('desc')
 
 // Date range
 const today = new Date().toISOString().split('T')[0]
@@ -209,7 +240,9 @@ const cameraInfo = computed(() => {
 
 const totalDetections = computed(() => {
   if (!dashboardData.value) return 0
-  return dashboardData.value.weapon_totals.reduce((sum, weapon) => sum + weapon.total, 0)
+  
+  // Use weaponTotals which already applies the weapon filter
+  return weaponTotals.value.reduce((sum, weapon) => sum + weapon.total, 0)
 })
 
 const dailyAverage = computed(() => {
@@ -220,14 +253,25 @@ const dailyAverage = computed(() => {
 })
 
 const avgConfidence = computed(() => {
-  if (!dashboardData.value || dashboardData.value.weapon_totals.length === 0) return 0
-  const avg = dashboardData.value.weapon_totals.reduce((sum, w) => 
-    sum + (w.avg_conf || 0), 0) / dashboardData.value.weapon_totals.length
+  if (!dashboardData.value || weaponTotals.value.length === 0) return 0
+  
+  // Use weaponTotals which already applies the weapon filter
+  const avg = weaponTotals.value.reduce((sum, w) => 
+    sum + (w.avg_conf || 0), 0) / weaponTotals.value.length
   return Math.round(avg * 100)
 })
 
 const weaponTotals = computed(() => {
-  return dashboardData.value ? dashboardData.value.weapon_totals : []
+  if (!dashboardData.value) return []
+  
+  let totals = dashboardData.value.weapon_totals
+  
+  // Filter by weapon type if selected
+  if (filterWeapon.value) {
+    totals = totals.filter(w => w.weapon_type === filterWeapon.value)
+  }
+  
+  return totals
 })
 
 const maxDetections = computed(() => {
@@ -236,14 +280,59 @@ const maxDetections = computed(() => {
 })
 
 const dailySummary = computed(() => {
-  return dashboardData.value ? dashboardData.value.daily_summary : []
+  if (!dashboardData.value) return []
+  
+  let summary = dashboardData.value.daily_summary
+  
+  // Filter by weapon type if selected
+  if (filterWeapon.value) {
+    summary = summary.filter(item => item.weapon_type === filterWeapon.value)
+  }
+  
+  return summary
+})
+
+const sortedDailySummary = computed(() => {
+  if (!dailySummary.value) return []
+  
+  const sorted = [...dailySummary.value].sort((a, b) => {
+    let aVal = a[sortColumn.value]
+    let bVal = b[sortColumn.value]
+    
+    // Handle date sorting
+    if (sortColumn.value === 'detection_date') {
+      aVal = new Date(aVal).getTime()
+      bVal = new Date(bVal).getTime()
+    }
+    
+    // Handle numeric sorting
+    if (typeof aVal === 'number' && typeof bVal === 'number') {
+      return sortDirection.value === 'asc' ? aVal - bVal : bVal - aVal
+    }
+    
+    // Handle string sorting
+    if (sortDirection.value === 'asc') {
+      return aVal > bVal ? 1 : -1
+    } else {
+      return aVal < bVal ? 1 : -1
+    }
+  })
+  
+  return sorted
 })
 
 const dailyTimeline = computed(() => {
   if (!dashboardData.value) return []
   
+  let summaryData = dashboardData.value.daily_summary
+  
+  // Filter by weapon type if selected
+  if (filterWeapon.value) {
+    summaryData = summaryData.filter(item => item.weapon_type === filterWeapon.value)
+  }
+  
   const timeline = {}
-  dashboardData.value.daily_summary.forEach(item => {
+  summaryData.forEach(item => {
     if (!timeline[item.detection_date]) {
       timeline[item.detection_date] = {
         date: item.detection_date,
@@ -268,6 +357,15 @@ onMounted(async () => {
   // Auto-refresh every 30 seconds
   setInterval(loadDashboard, 30000)
 })
+
+function sortBy(column) {
+  if (sortColumn.value === column) {
+    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortColumn.value = column
+    sortDirection.value = 'desc'
+  }
+}
 
 function handleDateRangeChange() {
   if (dateRangeType.value === 'preset') {
@@ -333,6 +431,45 @@ async function loadDashboard() {
   }
   
   isLoading.value = false
+}
+
+function exportToCSV() {
+  if (!dashboardData.value || sortedDailySummary.value.length === 0) {
+    alert('No data to export')
+    return
+  }
+  
+  // CSV Header
+  let csv = 'Date,Camera,Location,Weapon Type,Total Detections,Average Confidence,First Detection,Last Detection\n'
+  
+  // CSV Rows
+  sortedDailySummary.value.forEach(item => {
+    const row = [
+      formatDate(item.detection_date),
+      item.camera_name || 'N/A',
+      item.location || 'N/A',
+      formatWeaponName(item.weapon_type),
+      item.total_detections,
+      `${Math.round(item.avg_confidence * 100)}%`,
+      formatTime(item.first_detection),
+      formatTime(item.last_detection)
+    ]
+    
+    // Escape values that contain commas
+    csv += row.map(val => `"${val}"`).join(',') + '\n'
+  })
+  
+  // Create and download file
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  
+  const filename = `analytics-${dateRangeDisplay.value.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.csv`
+  link.href = url
+  link.download = filename
+  link.click()
+  
+  window.URL.revokeObjectURL(url)
 }
 
 function formatWeaponName(weaponType) {
@@ -417,6 +554,21 @@ function getConfidenceLabel(score) {
 
 .date-input {
   min-width: 140px;
+}
+
+.export-btn {
+  padding: 8px 16px;
+  background: #27ae60;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.export-btn:hover {
+  background: #219a52;
 }
 
 .refresh-btn {
@@ -602,8 +754,8 @@ function getConfidenceLabel(score) {
   cursor: help;
 }
 
-.weapon-dot.knife { background: #e74c3c; }
-.weapon-dot.pistol { background: #f39c12; }
+.weapon-dot.knife { background: #e73c8c; }
+.weapon-dot.pistol { background: #3638ca; }
 .weapon-dot.heavy_weapon { background: #8e44ad; }
 
 .day-total {
@@ -649,6 +801,21 @@ function getConfidenceLabel(score) {
   z-index: 10;
 }
 
+.details-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s ease;
+}
+
+.details-table th.sortable:hover {
+  background: #e9ecef;
+}
+
+.details-table th.sortable span {
+  margin-left: 5px;
+  color: #4a90e2;
+}
+
 .details-table td {
   padding: 12px;
   border-bottom: 1px solid #e9ecef;
@@ -675,13 +842,13 @@ function getConfidenceLabel(score) {
 }
 
 .weapon-badge.knife {
-  background: #ffebee;
-  color: #e74c3c;
+  background: #ffebf4;
+  color: #e73c8c;
 }
 
 .weapon-badge.pistol {
-  background: #fff3e0;
-  color: #f39c12;
+  background: #e0e2ff;
+  color: #3638ca;
 }
 
 .weapon-badge.heavy_weapon {
@@ -732,6 +899,7 @@ function getConfidenceLabel(score) {
   .filter-select,
   .date-select,
   .date-input,
+  .export-btn,
   .refresh-btn {
     width: 100%;
   }
