@@ -1,3 +1,4 @@
+<!-- src/tabs/LogsTab.vue - UPDATED with time filter -->
 <template>
   <div class="logs-tab">
     <div class="logs-header">
@@ -51,6 +52,31 @@
           />
         </template>
         
+        <!-- NEW: Time filter -->
+        <input 
+          type="time" 
+          v-model="startTime" 
+          @change="loadLogs"
+          class="time-input"
+          placeholder="From"
+          title="Filter by start time (e.g., 09:00)"
+        />
+        <input 
+          type="time" 
+          v-model="endTime" 
+          @change="loadLogs"
+          class="time-input"
+          placeholder="To"
+          title="Filter by end time (e.g., 17:00)"
+        />
+        
+        <button v-if="startTime || endTime" 
+                @click="clearTimeFilter" 
+                class="clear-time-btn"
+                title="Clear time filter">
+          ⌫
+        </button>
+        
         <button @click="exportToCSV" class="export-btn" title="Export to CSV">
           📥 Export
         </button>
@@ -65,7 +91,7 @@
     <div class="stats-row">
       <div class="stat-card">
         <div class="stat-label">Total Detections</div>
-        <div class="stat-value">{{ logs.length }}</div>
+        <div class="stat-value">{{ filteredLogs.length }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Cameras Monitored</div>
@@ -172,6 +198,10 @@ const today = new Date().toISOString().split('T')[0]
 const startDate = ref(getDateDaysAgo(7))
 const endDate = ref(today)
 
+// NEW: Time filter
+const startTime = ref('')
+const endTime = ref('')
+
 // Sorting
 const sortColumn = ref('detection_time')
 const sortDirection = ref('desc')
@@ -182,24 +212,55 @@ function getDateDaysAgo(days) {
   return date.toISOString().split('T')[0]
 }
 
+// NEW: Filter logs by time of day
+const filteredLogs = computed(() => {
+  if (!startTime.value && !endTime.value) {
+    return logs.value
+  }
+  
+  return logs.value.filter(log => {
+    try {
+      const logTime = new Date(log.detection_time).toTimeString().slice(0, 5) // HH:MM format
+      
+      if (startTime.value && endTime.value) {
+        if (startTime.value <= endTime.value) {
+          // Normal range (e.g., 09:00 to 17:00)
+          return logTime >= startTime.value && logTime <= endTime.value
+        } else {
+          // Overnight range (e.g., 22:00 to 06:00)
+          return logTime >= startTime.value || logTime <= endTime.value
+        }
+      } else if (startTime.value) {
+        return logTime >= startTime.value
+      } else if (endTime.value) {
+        return logTime <= endTime.value
+      }
+    } catch (error) {
+      console.error('Error filtering log by time:', error)
+      return true
+    }
+    return true
+  })
+})
+
 const uniqueCameras = computed(() => {
-  const cameras = new Set(logs.value.map(log => log.camera_id))
+  const cameras = new Set(filteredLogs.value.map(log => log.camera_id))
   return cameras.size
 })
 
 const uniqueWeapons = computed(() => {
-  const weapons = new Set(logs.value.map(log => log.weapon_type))
+  const weapons = new Set(filteredLogs.value.map(log => log.weapon_type))
   return weapons.size
 })
 
 const avgConfidence = computed(() => {
-  if (logs.value.length === 0) return 0
-  const sum = logs.value.reduce((acc, log) => acc + (log.confidence_score || 0), 0)
-  return Math.round((sum / logs.value.length) * 100)
+  if (filteredLogs.value.length === 0) return 0
+  const sum = filteredLogs.value.reduce((acc, log) => acc + (log.confidence_score || 0), 0)
+  return Math.round((sum / filteredLogs.value.length) * 100)
 })
 
 const sortedLogs = computed(() => {
-  const sorted = [...logs.value].sort((a, b) => {
+  const sorted = [...filteredLogs.value].sort((a, b) => {
     let aVal = a[sortColumn.value]
     let bVal = b[sortColumn.value]
     
@@ -255,6 +316,12 @@ function handleDateRangeChange() {
   loadLogs()
 }
 
+function clearTimeFilter() {
+  startTime.value = ''
+  endTime.value = ''
+  loadLogs()
+}
+
 async function loadCameras() {
   try {
     const res = await fetch('/api/cameras')
@@ -285,6 +352,10 @@ async function loadLogs() {
     if (filterCamera.value) url += `&camera_id=${filterCamera.value}`
     if (filterWeapon.value) url += `&weapon_type=${filterWeapon.value}`
     
+    // NEW: Add time filter parameters
+    if (startTime.value) url += `&start_time=${startTime.value}`
+    if (endTime.value) url += `&end_time=${endTime.value}`
+    
     const res = await fetch(url, {
       headers: { 'Authorization': `Bearer ${props.token}` }
     })
@@ -314,7 +385,7 @@ async function loadLogs() {
 }
 
 function exportToCSV() {
-  if (logs.value.length === 0) {
+  if (filteredLogs.value.length === 0) {
     alert('No data to export')
     return
   }
@@ -334,7 +405,9 @@ function exportToCSV() {
   const url = window.URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `detection-logs-${new Date().toISOString().split('T')[0]}.csv`
+  
+  const timeFilter = startTime.value || endTime.value ? `_${startTime.value || '00:00'}-${endTime.value || '23:59'}` : ''
+  a.download = `detection-logs-${new Date().toISOString().split('T')[0]}${timeFilter}.csv`
   a.click()
   window.URL.revokeObjectURL(url)
 }
@@ -393,39 +466,61 @@ function getConfidenceClass(score) {
 }
 
 .filter-select,
-.date-input {
-  padding: 8px 12px;
+.date-input,
+.time-input {
+  padding: 6px 10px;
   border: 1px solid #ddd;
   border-radius: 6px;
   background: white;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   cursor: pointer;
 }
 
 .date-input {
-  min-width: 140px;
+  min-width: 130px;
+}
+
+.time-input {
+  min-width: 95px;
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+}
+
+.time-input::placeholder {
+  color: #7f8c8d;
+  font-size: 0.85rem;
 }
 
 .filter-select:focus,
-.date-input:focus {
+.date-input:focus,
+.time-input:focus {
   outline: none;
   border-color: #4a90e2;
 }
 
 .refresh-btn,
-.export-btn {
-  padding: 8px 16px;
-  background: #4a90e2;
+.export-btn,
+.clear-time-btn {
+  padding: 6px 12px;
   color: white;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   transition: background-color 0.3s ease;
+}
+
+.refresh-btn {
+  background: #4a90e2;
 }
 
 .export-btn {
   background: #27ae60;
+}
+
+.clear-time-btn {
+  background: #e74c3c;
+  font-size: 1rem;
 }
 
 .refresh-btn:hover {
@@ -434,6 +529,10 @@ function getConfidenceClass(score) {
 
 .export-btn:hover {
   background: #219a52;
+}
+
+.clear-time-btn:hover {
+  background: #c0392b;
 }
 
 .stats-row {
@@ -580,8 +679,10 @@ function getConfidenceClass(score) {
   
   .filter-select,
   .date-input,
+  .time-input,
   .refresh-btn,
-  .export-btn {
+  .export-btn,
+  .clear-time-btn {
     width: 100%;
   }
   
