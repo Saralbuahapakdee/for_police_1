@@ -1,4 +1,4 @@
-<!-- src/tabs/StreamTab.vue - FIXED WITH AUTO-SAVE -->
+<!-- src/tabs/StreamTab.vue - SIMPLIFIED: Always show all bounding boxes, no preferences -->
 <template>
   <div class="stream-tab">
     <!-- Camera Selector -->
@@ -14,24 +14,6 @@
           {{ camera.camera_name }}
           <span class="camera-loc">{{ camera.location }}</span>
         </button>
-      </div>
-    </div>
-
-    <!-- Weapon Preferences -->
-    <div class="stream-controls">
-      <h2>⚙️ Detection Preferences</h2>
-      <div v-if="weaponPreferences.length === 0" class="loading-preferences">
-        Loading weapon preferences...
-      </div>
-      <div v-else class="weapon-filters">
-        <label v-for="pref in weaponPreferences" :key="pref.weapon_type" class="weapon-checkbox">
-          <input 
-            type="checkbox" 
-            :checked="pref.is_enabled"
-            @change="togglePreference(pref)"
-          />
-          <span class="weapon-name">{{ formatWeaponName(pref.weapon_type) }}</span>
-        </label>
       </div>
     </div>
     
@@ -54,23 +36,6 @@
         ></canvas>
       </div>
       
-      <!-- Detection Status Indicator -->
-      <div class="detection-status">
-        <div :class="['status-indicator', detectionState.detected ? 'detecting' : 'clear']">
-          <span class="status-dot"></span>
-          <span class="status-text">
-            {{ detectionState.detected ? '🚨 WEAPON DETECTED' : '✓ No Threats Detected' }}
-          </span>
-        </div>
-        <div v-if="detectionState.detected" class="detected-weapons">
-          <div v-for="(data, weapon) in detectionState.objects" :key="weapon" class="weapon-item">
-            <span class="weapon-icon">⚠️</span>
-            <span class="weapon-label">{{ formatWeaponName(weapon) }}</span>
-            <span class="weapon-confidence">{{ getAverageConfidence(data) }}%</span>
-          </div>
-        </div>
-      </div>
-      
       <!-- Recent Detections -->
       <div class="recent-detections">
         <h4>Recent Detections (This Camera)</h4>
@@ -90,7 +55,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import detectionService from '../services/detectionService.js'
 
 const props = defineProps({
@@ -99,9 +64,7 @@ const props = defineProps({
 
 const cameras = ref([])
 const selectedCamera = ref(null)
-const weaponPreferences = ref([])
 const allRecentDetections = ref([])
-const isSaving = ref(false)
 const detectionState = ref({
   detected: false,
   objects: {},
@@ -115,16 +78,6 @@ const canvasHeight = ref(480)
 
 let unsubscribe = null
 let animationFrameId = null
-let saveTimeout = null
-
-// WEAPON TYPE MAPPING
-const WEAPON_TYPE_MAP = {
-  'gun': 'pistol',
-  'heavy-weapon': 'heavy_weapon',
-  'knife': 'knife',
-  'pistol': 'pistol',
-  'heavy_weapon': 'heavy_weapon'
-}
 
 // Weapon colors
 const weaponColors = {
@@ -148,13 +101,8 @@ const recentDetections = computed(() => {
 onMounted(async () => {
   console.log('🔵 StreamTab mounted')
   
-  // Load preferences FIRST before subscribing to detections
-  await loadWeaponPreferences()
-  
-  await Promise.all([
-    loadCameras(),
-    loadRecentDetections()
-  ])
+  await loadCameras()
+  await loadRecentDetections()
   
   // Subscribe to detection service for real-time updates
   unsubscribe = detectionService.subscribe((state) => {
@@ -183,10 +131,6 @@ onBeforeUnmount(() => {
   
   if (animationFrameId) {
     cancelAnimationFrame(animationFrameId)
-  }
-  
-  if (saveTimeout) {
-    clearTimeout(saveTimeout)
   }
 })
 
@@ -229,12 +173,8 @@ function drawBoundingBoxes() {
   const scaleX = canvas.width / 640
   const scaleY = canvas.height / 480
   
-  // Draw boxes for each detected weapon
+  // Draw boxes for ALL detected weapons (no filtering)
   for (const [weaponType, data] of Object.entries(detectionState.value.objects || {})) {
-    if (!shouldShowWeapon(weaponType)) {
-      continue
-    }
-    
     const boxes = data.boxes || []
     const confidences = Array.isArray(data.confidences) 
       ? data.confidences 
@@ -304,102 +244,6 @@ function drawBoundingBoxes() {
   }
 }
 
-function shouldShowWeapon(weaponType) {
-  const normalized = normalizeWeaponType(weaponType)
-  const pref = weaponPreferences.value.find(p => p.weapon_type === normalized)
-  return pref ? pref.is_enabled : true
-}
-
-function normalizeWeaponType(weaponType) {
-  const lowercased = weaponType.toLowerCase()
-  return WEAPON_TYPE_MAP[lowercased] || lowercased
-}
-
-// Toggle preference and auto-save
-function togglePreference(pref) {
-  console.log(`🔄 Toggling ${pref.weapon_type} from ${pref.is_enabled} to ${!pref.is_enabled}`)
-  
-  // Toggle the value
-  pref.is_enabled = !pref.is_enabled
-  
-  // Redraw immediately to reflect changes
-  drawBoundingBoxes()
-  
-  // Clear any existing timeout
-  if (saveTimeout) {
-    clearTimeout(saveTimeout)
-  }
-  
-  // Debounce the save by 300ms
-  saveTimeout = setTimeout(async () => {
-    console.log('💾 Auto-saving preferences:', JSON.stringify(weaponPreferences.value, null, 2))
-    
-    try {
-      const res = await fetch('/api/weapon-preferences', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${props.token}` 
-        },
-        body: JSON.stringify({ preferences: weaponPreferences.value })
-      })
-      
-      if (res.ok) {
-        console.log('✅ Preferences auto-saved successfully')
-      } else {
-        console.error('❌ Failed to auto-save preferences')
-      }
-    } catch (error) {
-      console.error('❌ Error auto-saving preferences:', error)
-    }
-  }, 300)
-}
-
-// AUTO-SAVE function - saves immediately when checkbox is toggled
-async function autoSavePreferences() {
-  console.log('🔄 Auto-saving preferences...')
-  
-  // Redraw immediately to reflect changes
-  drawBoundingBoxes()
-  
-  // Clear any existing timeout
-  if (saveTimeout) {
-    clearTimeout(saveTimeout)
-  }
-  
-  // Debounce the save by 500ms in case user toggles multiple checkboxes quickly
-  saveTimeout = setTimeout(async () => {
-    isSaving.value = true
-    
-    console.log('💾 Saving preferences:', JSON.stringify(weaponPreferences.value, null, 2))
-    
-    try {
-      const res = await fetch('/api/weapon-preferences', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${props.token}` 
-        },
-        body: JSON.stringify({ preferences: weaponPreferences.value })
-      })
-      
-      if (res.ok) {
-        console.log('✅ Weapon preferences saved successfully')
-        // Show brief success indicator
-        setTimeout(() => {
-          isSaving.value = false
-        }, 500)
-      } else {
-        console.error('Failed to save preferences')
-        isSaving.value = false
-      }
-    } catch (error) {
-      console.error('Could not save preferences:', error)
-      isSaving.value = false
-    }
-  }, 500)
-}
-
 async function loadCameras() {
   try {
     const res = await fetch('/api/cameras')
@@ -425,65 +269,6 @@ function selectCamera(camera) {
   selectedCamera.value = camera
 }
 
-async function loadWeaponPreferences() {
-  console.log('📥 Loading weapon preferences...')
-  
-  try {
-    const res = await fetch('/api/weapon-preferences', {
-      headers: { 'Authorization': `Bearer ${props.token}` }
-    })
-    
-    if (res.ok) {
-      const data = await res.json()
-      console.log('📦 Raw preferences from API:', JSON.stringify(data, null, 2))
-      
-      if (data.preferences && data.preferences.length > 0) {
-        // Map the preferences and ensure is_enabled is a boolean
-        weaponPreferences.value = data.preferences.map(pref => ({
-          weapon_type: pref.weapon_type,
-          is_enabled: pref.is_enabled === true || pref.is_enabled === 1 || pref.is_enabled === '1'
-        }))
-        
-        console.log('✅ Weapon preferences loaded:', JSON.stringify(weaponPreferences.value, null, 2))
-      } else {
-        // Create default preferences if none exist
-        console.log('⚠️ No preferences found, creating defaults...')
-        weaponPreferences.value = [
-          { weapon_type: 'knife', is_enabled: true },
-          { weapon_type: 'pistol', is_enabled: true },
-          { weapon_type: 'heavy_weapon', is_enabled: true }
-        ]
-        
-        // Save the defaults immediately
-        await fetch('/api/weapon-preferences', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${props.token}` 
-          },
-          body: JSON.stringify({ preferences: weaponPreferences.value })
-        })
-      }
-    } else {
-      console.error('Failed to load preferences:', res.status)
-      // Use defaults on error
-      weaponPreferences.value = [
-        { weapon_type: 'knife', is_enabled: true },
-        { weapon_type: 'pistol', is_enabled: true },
-        { weapon_type: 'heavy_weapon', is_enabled: true }
-      ]
-    }
-  } catch (error) {
-    console.error('Could not load weapon preferences:', error)
-    // Use defaults on error
-    weaponPreferences.value = [
-      { weapon_type: 'knife', is_enabled: true },
-      { weapon_type: 'pistol', is_enabled: true },
-      { weapon_type: 'heavy_weapon', is_enabled: true }
-    ]
-  }
-}
-
 async function loadRecentDetections() {
   try {
     const res = await fetch(`/api/dashboard-data?days=1`, {
@@ -497,15 +282,6 @@ async function loadRecentDetections() {
   } catch (error) {
     console.error('Could not load recent detections:', error)
   }
-}
-
-function getAverageConfidence(data) {
-  const confidences = Array.isArray(data.confidences) 
-    ? data.confidences 
-    : [data.confidences]
-  
-  const avg = confidences.reduce((a, b) => a + b, 0) / confidences.length
-  return Math.round(avg * 100)
 }
 
 function formatWeaponName(weaponType) {
@@ -587,61 +363,6 @@ function formatTime(timeString) {
   margin-top: 4px;
 }
 
-.stream-controls {
-  background: white;
-  padding: 20px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.stream-controls h2 {
-  margin-bottom: 15px;
-  color: #2c3e50;
-}
-
-.loading-preferences {
-  color: #7f8c8d;
-  font-style: italic;
-  padding: 20px 0;
-  text-align: center;
-}
-
-.weapon-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 15px;
-}
-
-.weapon-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  padding: 8px 12px;
-  border-radius: 6px;
-  transition: background-color 0.3s ease;
-}
-
-.weapon-checkbox:hover {
-  background-color: #f8f9fa;
-}
-
-.weapon-checkbox input {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-  accent-color: #4a90e2;
-}
-
-.weapon-name {
-  font-weight: 500;
-  color: #2c3e50;
-}
-
-.save-indicator {
-  display: none;
-}
-
 .stream-container {
   background: white;
   padding: 20px;
@@ -687,89 +408,11 @@ function formatTime(timeString) {
   pointer-events: none;
 }
 
-.detection-status {
-  margin-bottom: 20px;
-  padding: 15px;
-  background: #f8f9fa;
-  border-radius: 8px;
-}
-
-.status-indicator {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 10px;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 1.1rem;
-  transition: all 0.3s ease;
-}
-
-.status-indicator.clear {
-  background: #d4edda;
-  color: #27ae60;
-}
-
-.status-indicator.detecting {
-  background: #f8d7da;
-  color: #e74c3c;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
-}
-
-.status-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: currentColor;
-  animation: blink 1s ease-in-out infinite;
-}
-
-@keyframes blink {
-  0%, 50%, 100% { opacity: 1; }
-  25%, 75% { opacity: 0.3; }
-}
-
-.detected-weapons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 10px;
-  justify-content: center;
-}
-
-.weapon-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: white;
-  border-radius: 6px;
-  border: 2px solid #e74c3c;
-  font-size: 0.9rem;
-}
-
-.weapon-icon {
-  font-size: 1.2rem;
-}
-
-.weapon-label {
-  font-weight: 600;
-  color: #2c3e50;
-}
-
-.weapon-confidence {
-  color: #e74c3c;
-  font-weight: 700;
-}
-
 .recent-detections {
   text-align: left;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 2px solid #e0e0e0;
 }
 
 .recent-detections h4 {
@@ -815,15 +458,6 @@ function formatTime(timeString) {
 @media (max-width: 768px) {
   .camera-buttons {
     grid-template-columns: 1fr;
-  }
-  
-  .weapon-filters {
-    flex-direction: column;
-  }
-  
-  .detected-weapons {
-    flex-direction: column;
-    align-items: stretch;
   }
 }
 </style>
