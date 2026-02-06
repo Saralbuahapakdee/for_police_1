@@ -131,7 +131,7 @@ onBeforeUnmount(() => {
   
   if (saveTimeout) {
     clearTimeout(saveTimeout)
-
+  }
   if (animationFrameId) {
     cancelAnimationFrame(animationFrameId)
   }
