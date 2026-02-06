@@ -4,6 +4,6 @@ incident_images/
 */incident_images/
 .__init__.py
 */.__init__.py
-.gitignore
-*/.gitignore
-.gitignore
+*users.db
+*hi.txt
+notworkingone/ai-flask/example-mqtt.txt
