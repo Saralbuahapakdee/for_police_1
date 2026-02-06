@@ -87,7 +87,7 @@ def on_message(client, userdata, msg):
         traceback.print_exc()
 
 def generate():
-    rtsp_url = "rtsp://fuGk55rSwiDtVigRfxPRkVlyiJPGmDZW:ZqniBPd7ILatymFgJcK9W@test.rtsp.stream/pattern2"
+    rtsp_url = "rtsp://192.168.1.33:8554/local-loop"
     cap = None
 
     def open_capture():
@@ -114,9 +114,12 @@ def generate():
             time.sleep(0.2)
             continue
 
-
+        # Get latest detection data thread-safely
+        with detection_lock:
+            current_detection = latest_detection.copy()
+        
         # Draw bounding boxes if detected
-        if is_detected:
+        if current_detection.get("detected", False):
             for weapon_type, data in current_detection["objects"].items():
                 boxes = data.get("boxes", [])
                 confidences = data.get("confidences", [])
