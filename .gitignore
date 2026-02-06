@@ -1,0 +1,9 @@
+__pycache__/
+*/__pycache__/
+incident_images/
+*/incident_images/
+.__init__.py
+*/.__init__.py
+*users.db
+*hi.txt
+notworkingone/ai-flask/example-mqtt.txt
