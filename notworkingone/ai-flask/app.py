@@ -87,7 +87,7 @@ def on_message(client, userdata, msg):
         traceback.print_exc()
 
 def generate():
-    rtsp_url = "rtsp://admin2:459OOPpr0j3ctzaCE61@161.246.5.20:554/cam/realmonitor?channel=1&subtype=1"
+    rtsp_url = "rtsp://fuGk55rSwiDtVigRfxPRkVlyiJPGmDZW:ZqniBPd7ILatymFgJcK9W@test.rtsp.stream/pattern2"
     cap = None
 
     def open_capture():
@@ -114,8 +114,37 @@ def generate():
             time.sleep(0.2)
             continue
 
-        # NO TEXT OVERLAY - Just pass through the raw stream
+
+        # Draw bounding boxes if detected
+        if is_detected:
+            for weapon_type, data in current_detection["objects"].items():
+                boxes = data.get("boxes", [])
+                confidences = data.get("confidences", [])
+                
+                # Ensure we have matching confidences for boxes
+                if len(confidences) < len(boxes):
+                    # Pad with 0 if missing (shouldn't happen with normalized data but good for safety)
+                    confidences.extend([0] * (len(boxes) - len(confidences)))
+
+                for i, box in enumerate(boxes):
+                    if len(box) == 4:
+                        x1, y1, x2, y2 = map(int, box)
+                        conf = confidences[i]
+                        
+                        # Draw rectangle
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                        
+                        # Prepare label
+                        label = f"{weapon_type}: {conf:.2f}"
+                        (label_w, label_h), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+                        
+                        # Draw label background
+                        cv2.rectangle(frame, (x1, y1 - 20), (x1 + label_w, y1), (0, 0, 255), -1)
+                        
+                        # Draw label text
+                        cv2.putText(frame, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         
+       
         # Encode frame
         ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
         if not ok:
@@ -147,7 +176,7 @@ client.connect("fd2249eedb6c43fdbf9e9d318ab38fe4.s1.eu.hivemq.cloud", 8883)
 
 client.on_message = on_message
 client.loop_start()
-client.subscribe("#", qos=1)
+client.subscribe("#", qos=0)
 
 print("MQTT client connected and listening for messages...")
 print("Subscribed to all topics (#)")

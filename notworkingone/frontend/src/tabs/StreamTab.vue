@@ -28,12 +28,7 @@
         <img :src="videoUrl" class="video-stream" alt="AI Stream" ref="videoElement" />
         
         <!-- Canvas overlay for bounding boxes -->
-        <canvas 
-          ref="canvasElement"
-          class="bounding-box-canvas"
-          :width="canvasWidth"
-          :height="canvasHeight"
-        ></canvas>
+
       </div>
       
       <!-- Recent Detections -->
@@ -55,6 +50,7 @@
 </template>
 
 <script setup>
+
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import detectionService from '../services/detectionService.js'
 
@@ -72,12 +68,23 @@ const detectionState = ref({
 })
 
 const videoElement = ref(null)
-const canvasElement = ref(null)
-const canvasWidth = ref(640)
-const canvasHeight = ref(480)
+
 
 let unsubscribe = null
+
+let saveTimeout = null
+
+// WEAPON TYPE MAPPING
+const WEAPON_TYPE_MAP = {
+  'gun': 'pistol',
+  'heavy-weapon': 'heavy_weapon',
+  'knife': 'knife',
+  'pistol': 'pistol',
+  'heavy_weapon': 'heavy_weapon'
+}
+
 let animationFrameId = null
+
 
 // Weapon colors
 const weaponColors = {
@@ -107,14 +114,7 @@ onMounted(async () => {
   // Subscribe to detection service for real-time updates
   unsubscribe = detectionService.subscribe((state) => {
     detectionState.value = state.currentDetection
-    drawBoundingBoxes()
   })
-  
-  // Setup canvas resize observer
-  setupCanvasResize()
-  
-  // Start drawing loop
-  startDrawingLoop()
   
   // Refresh detections every 10 seconds
   setInterval(loadRecentDetections, 10000)
@@ -129,120 +129,14 @@ onBeforeUnmount(() => {
     unsubscribe()
   }
   
+  if (saveTimeout) {
+    clearTimeout(saveTimeout)
+
   if (animationFrameId) {
     cancelAnimationFrame(animationFrameId)
   }
 })
 
-function setupCanvasResize() {
-  const updateSize = () => {
-    if (videoElement.value) {
-      canvasWidth.value = videoElement.value.clientWidth || 640
-      canvasHeight.value = videoElement.value.clientHeight || 480
-      nextTick(() => drawBoundingBoxes())
-    }
-  }
-  
-  window.addEventListener('resize', updateSize)
-  setTimeout(updateSize, 100)
-  
-  onBeforeUnmount(() => {
-    window.removeEventListener('resize', updateSize)
-  })
-}
-
-function startDrawingLoop() {
-  const draw = () => {
-    drawBoundingBoxes()
-    animationFrameId = requestAnimationFrame(draw)
-  }
-  animationFrameId = requestAnimationFrame(draw)
-}
-
-function drawBoundingBoxes() {
-  const canvas = canvasElement.value
-  if (!canvas) return
-  
-  const ctx = canvas.getContext('2d')
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
-  
-  if (!detectionState.value || !detectionState.value.detected) {
-    return
-  }
-  
-  const scaleX = canvas.width / 640
-  const scaleY = canvas.height / 480
-  
-  // Draw boxes for ALL detected weapons (no filtering)
-  for (const [weaponType, data] of Object.entries(detectionState.value.objects || {})) {
-    const boxes = data.boxes || []
-    const confidences = Array.isArray(data.confidences) 
-      ? data.confidences 
-      : [data.confidences]
-    
-    const color = weaponColors[weaponType] || '#00FF00'
-    
-    boxes.forEach((box, index) => {
-      const [x1, y1, x2, y2] = box
-      const confidence = confidences[index] || confidences[0] || 0
-      
-      const scaledX = x1 * scaleX
-      const scaledY = y1 * scaleY
-      const scaledWidth = (x2 - x1) * scaleX
-      const scaledHeight = (y2 - y1) * scaleY
-      
-      // Draw bounding box
-      ctx.strokeStyle = color
-      ctx.lineWidth = 3
-      ctx.strokeRect(scaledX, scaledY, scaledWidth, scaledHeight)
-      
-      // Draw label background
-      const label = `${formatWeaponName(weaponType)} ${(confidence * 100).toFixed(0)}%`
-      ctx.font = 'bold 14px Arial'
-      const textMetrics = ctx.measureText(label)
-      const textHeight = 20
-      
-      ctx.fillStyle = color
-      ctx.fillRect(scaledX, scaledY - textHeight, textMetrics.width + 10, textHeight)
-      
-      // Draw label text
-      ctx.fillStyle = '#000000'
-      ctx.fillText(label, scaledX + 5, scaledY - 5)
-      
-      // Draw corner markers
-      const cornerSize = 15
-      ctx.lineWidth = 4
-      
-      // Top-left
-      ctx.beginPath()
-      ctx.moveTo(scaledX, scaledY + cornerSize)
-      ctx.lineTo(scaledX, scaledY)
-      ctx.lineTo(scaledX + cornerSize, scaledY)
-      ctx.stroke()
-      
-      // Top-right
-      ctx.beginPath()
-      ctx.moveTo(scaledX + scaledWidth - cornerSize, scaledY)
-      ctx.lineTo(scaledX + scaledWidth, scaledY)
-      ctx.lineTo(scaledX + scaledWidth, scaledY + cornerSize)
-      ctx.stroke()
-      
-      // Bottom-left
-      ctx.beginPath()
-      ctx.moveTo(scaledX, scaledY + scaledHeight - cornerSize)
-      ctx.lineTo(scaledX, scaledY + scaledHeight)
-      ctx.lineTo(scaledX + cornerSize, scaledY + scaledHeight)
-      ctx.stroke()
-      
-      // Bottom-right
-      ctx.beginPath()
-      ctx.moveTo(scaledX + scaledWidth - cornerSize, scaledY + scaledHeight)
-      ctx.lineTo(scaledX + scaledWidth, scaledY + scaledHeight)
-      ctx.lineTo(scaledX + scaledWidth, scaledY + scaledHeight - cornerSize)
-      ctx.stroke()
-    })
-  }
-}
 
 async function loadCameras() {
   try {
@@ -399,14 +293,7 @@ function formatTime(timeString) {
   border: 1px solid #ddd;
 }
 
-.bounding-box-canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
+
 
 .recent-detections {
   text-align: left;
