@@ -105,7 +105,7 @@ def get_detection_overlay_text():
         return " | ".join(lines)
 
 def generate():
-    rtsp_url = "rtsp://admin2:459OOPpr0j3ctzaCE61@161.246.5.20:554/cam/realmonitor?channel=1&subtype=1"
+    rtsp_url = "rtsp://fuGk55rSwiDtVigRfxPRkVlyiJPGmDZW:ZqniBPd7ILatymFgJcK9W@test.rtsp.stream/pattern2"
     cap = None
 
     def open_capture():
@@ -137,9 +137,43 @@ def generate():
         
         # Determine text color based on detection status
         with detection_lock:
-            is_detected = latest_detection["detected"] and latest_detection["objects"]
+            # Copy detection data to avoid holding lock during drawing
+            current_detection = {
+                "detected": latest_detection["detected"],
+                "objects": latest_detection["objects"]
+            }
+            is_detected = current_detection["detected"] and current_detection["objects"]
         
         text_color = (0, 0, 255) if is_detected else (0, 255, 0)
+
+        # Draw bounding boxes if detected
+        if is_detected:
+            for weapon_type, data in current_detection["objects"].items():
+                boxes = data.get("boxes", [])
+                confidences = data.get("confidences", [])
+                
+                # Ensure we have matching confidences for boxes
+                if len(confidences) < len(boxes):
+                    # Pad with 0 if missing (shouldn't happen with normalized data but good for safety)
+                    confidences.extend([0] * (len(boxes) - len(confidences)))
+
+                for i, box in enumerate(boxes):
+                    if len(box) == 4:
+                        x1, y1, x2, y2 = map(int, box)
+                        conf = confidences[i]
+                        
+                        # Draw rectangle
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                        
+                        # Prepare label
+                        label = f"{weapon_type}: {conf:.2f}"
+                        (label_w, label_h), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+                        
+                        # Draw label background
+                        cv2.rectangle(frame, (x1, y1 - 20), (x1 + label_w, y1), (0, 0, 255), -1)
+                        
+                        # Draw label text
+                        cv2.putText(frame, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         
         # Add text overlay to frame
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -216,7 +250,7 @@ client.connect("fd2249eedb6c43fdbf9e9d318ab38fe4.s1.eu.hivemq.cloud", 8883)
 
 client.on_message = on_message
 client.loop_start()
-client.subscribe("#", qos=1)
+client.subscribe("#", qos=0)
 
 print("MQTT client connected and listening for messages...")
 print("Subscribed to all topics (#)")

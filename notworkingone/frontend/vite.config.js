@@ -15,6 +15,6 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     // Allow access from all hosts
-    allowedHosts: ["localhost", "172.18.0.4", "127.0.0.1"],
+    allowedHosts: "all",
   },
 })
