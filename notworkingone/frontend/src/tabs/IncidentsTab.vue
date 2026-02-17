@@ -1,4 +1,4 @@
-<!-- src/tabs/IncidentsTab.vue -->
+<!-- src/tabs/IncidentsTab.vue - UPDATED with time filter support -->
 <template>
   <div class="incidents-tab">
     <IncidentFilters
@@ -84,7 +84,9 @@ const filters = ref({
   dateRangeType: 'preset',
   days: 7,
   startDate: getDateDaysAgo(7),
-  endDate: new Date().toISOString().split('T')[0]
+  endDate: new Date().toISOString().split('T')[0],
+  startTime: '',  // NEW: Time filter
+  endTime: ''     // NEW: Time filter
 })
 
 const sortColumn = ref('detected_at')
@@ -125,6 +127,33 @@ const filteredIncidents = computed(() => {
     filtered = filtered.filter(incident => {
       const incidentDate = new Date(incident.detected_at)
       return incidentDate >= cutoffDate
+    })
+  }
+  
+  // NEW: Filter by time of day
+  if (filters.value.startTime || filters.value.endTime) {
+    filtered = filtered.filter(incident => {
+      try {
+        const incidentTime = new Date(incident.detected_at).toTimeString().slice(0, 5) // HH:MM format
+        
+        if (filters.value.startTime && filters.value.endTime) {
+          if (filters.value.startTime <= filters.value.endTime) {
+            // Normal range (e.g., 09:00 to 17:00)
+            return incidentTime >= filters.value.startTime && incidentTime <= filters.value.endTime
+          } else {
+            // Overnight range (e.g., 22:00 to 06:00)
+            return incidentTime >= filters.value.startTime || incidentTime <= filters.value.endTime
+          }
+        } else if (filters.value.startTime) {
+          return incidentTime >= filters.value.startTime
+        } else if (filters.value.endTime) {
+          return incidentTime <= filters.value.endTime
+        }
+      } catch (error) {
+        console.error('Error filtering incident by time:', error)
+        return true
+      }
+      return true
     })
   }
   
@@ -223,6 +252,10 @@ async function loadIncidents() {
     let url = '/api/incidents?limit=1000'
     if (filters.value.status) url += `&status=${filters.value.status}`
     if (filters.value.officer) url += `&assigned_to=${filters.value.officer}`
+    
+    // NEW: Add time filter parameters
+    if (filters.value.startTime) url += `&start_time=${filters.value.startTime}`
+    if (filters.value.endTime) url += `&end_time=${filters.value.endTime}`
     
     const res = await fetch(url, {
       headers: { 'Authorization': `Bearer ${props.token}` }

@@ -1,5 +1,6 @@
 // OPTIMIZED for INSTANT bounding box updates when MQTT arrives
 // Polling interval reduced to 500ms for near real-time response
+// UPDATED: 1-minute cooldown for detection logging
 
 class DetectionService {
   constructor() {
@@ -18,7 +19,7 @@ class DetectionService {
     this.lastTimestamp = null
     
     this.lastLoggedDetection = new Map()
-    this.LOG_COOLDOWN = 5 * 60 * 1000
+    this.LOG_COOLDOWN = 1 * 60 * 1000  // UPDATED: 1 minute instead of 5
     
     this.currentAlert = null
     
@@ -189,7 +190,7 @@ class DetectionService {
             
             if (result.is_new_log) {
               this.lastLoggedDetection.set(logKey, now)
-              console.log(`🕐 Cooldown started for ${logKey}`)
+              console.log(`🕐 Cooldown started for ${logKey} (1 minute)`)
               
               for (const [key, timestamp] of this.lastLoggedDetection.entries()) {
                 if (now - timestamp > this.LOG_COOLDOWN) {

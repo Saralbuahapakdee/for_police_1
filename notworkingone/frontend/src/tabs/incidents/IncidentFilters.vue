@@ -1,4 +1,4 @@
-<!-- src/tabs/incidents/IncidentFilters.vue -->
+<!-- src/tabs/incidents/IncidentFilters.vue - UPDATED with time filter -->
 <template>
   <div class="incidents-header">
     <h2>🚨 Incident Management</h2>
@@ -65,6 +65,31 @@
         />
       </template>
       
+      <!-- NEW: Time filter -->
+      <input 
+        type="time" 
+        v-model="localFilters.startTime" 
+        @change="emitChange"
+        class="time-input"
+        placeholder="From"
+        title="Filter by start time (e.g., 09:00)"
+      />
+      <input 
+        type="time" 
+        v-model="localFilters.endTime" 
+        @change="emitChange"
+        class="time-input"
+        placeholder="To"
+        title="Filter by end time (e.g., 17:00)"
+      />
+      
+      <button v-if="localFilters.startTime || localFilters.endTime" 
+              @click="clearTimeFilter" 
+              class="clear-time-btn"
+              title="Clear time filter">
+        ⌫
+      </button>
+      
       <div class="view-toggle">
         <button 
           @click="toggleView('horizontal')" 
@@ -118,6 +143,12 @@ function handleDateRangeChange() {
     localFilters.value.startDate = getDateDaysAgo(7)
     localFilters.value.endDate = today
   }
+  emitChange()
+}
+
+function clearTimeFilter() {
+  localFilters.value.startTime = ''
+  localFilters.value.endTime = ''
   emitChange()
 }
 
@@ -190,8 +221,9 @@ function getDateDaysAgo(days) {
 }
 
 .filter-select,
-.date-input {
-  padding: 8px 12px;
+.date-input,
+.time-input {
+  padding: 6px 12px;
   border: 1px solid #ddd;
   border-radius: 6px;
   background: white;
@@ -203,8 +235,34 @@ function getDateDaysAgo(days) {
   min-width: 140px;
 }
 
+.time-input {
+  min-width: 100px;
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+}
+
+.time-input::placeholder {
+  color: #7f8c8d;
+  font-size: 0.85rem;
+}
+
+.clear-time-btn {
+  padding: 8px 12px;
+  background: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.clear-time-btn:hover {
+  background: #c0392b;
+}
+
 .refresh-btn {
-  padding: 8px 16px;
+  padding: 10px 12px;
   background: #4a90e2;
   color: white;
   border: none;
@@ -231,8 +289,10 @@ function getDateDaysAgo(days) {
   
   .filter-select,
   .date-input,
+  .time-input,
   .view-toggle,
-  .refresh-btn {
+  .refresh-btn,
+  .clear-time-btn {
     width: 100%;
   }
 }

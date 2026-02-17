@@ -557,7 +557,7 @@ function getConfidenceLabel(score) {
 }
 
 .export-btn {
-  padding: 8px 16px;
+  padding: 6px 12px;
   background: #27ae60;
   color: white;
   border: none;
@@ -572,7 +572,7 @@ function getConfidenceLabel(score) {
 }
 
 .refresh-btn {
-  padding: 8px 16px;
+  padding: 6px 12px;
   background: #4a90e2;
   color: white;
   border: none;

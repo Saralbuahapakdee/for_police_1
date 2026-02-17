@@ -2,7 +2,7 @@ import random
 import requests
 import os
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Blueprint, request, Response
 from auth import create_token, verify_token, token_required, get_token_from_request, verify_password, hash_password
 from models import (
@@ -267,6 +267,7 @@ def set_prefs():
 def log_det():
     """
     Log detection with optional image capture
+    UPDATED: 1-minute cooldown instead of 5 minutes
     """
     try:
         data = request.json
@@ -285,7 +286,8 @@ def log_det():
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            five_minutes_ago = datetime.now() - timedelta(minutes=5)
+            # UPDATED: 1-minute cooldown instead of 5 minutes
+            one_minute_ago = datetime.now() - timedelta(minutes=1)
             
             cursor.execute('''
                 SELECT id, detection_time, image_path FROM detection_logs 
@@ -294,14 +296,14 @@ def log_det():
                   AND detection_time >= ?
                 ORDER BY detection_time DESC
                 LIMIT 1
-            ''', (camera_id, weapon_type, five_minutes_ago))
+            ''', (camera_id, weapon_type, one_minute_ago))
             
             existing_detection = cursor.fetchone()
             
             if existing_detection:
                 detection_id = existing_detection['id']
                 time_since = (datetime.now() - datetime.fromisoformat(existing_detection['detection_time'])).total_seconds()
-                remaining = int(300 - time_since)
+                remaining = int(60 - time_since)  # UPDATED: 60 seconds instead of 300
                 
                 print(f"⏳ Skipping log for {weapon_type} on camera {camera_id} - recent detection {int(time_since)}s ago (cooldown: {remaining}s remaining)")
                 
@@ -348,6 +350,7 @@ def log_det():
             is_new_incident = False
             
             if confidence_score >= 0.80:
+                # UPDATED: 1-minute window for incident grouping
                 cursor.execute('''
                     SELECT id, status FROM incidents 
                     WHERE camera_id = ? 
@@ -356,7 +359,7 @@ def log_det():
                       AND status IN ('pending', 'responding')
                     ORDER BY detected_at DESC
                     LIMIT 1
-                ''', (camera_id, weapon_type, five_minutes_ago))
+                ''', (camera_id, weapon_type, one_minute_ago))
                 
                 existing_incident = cursor.fetchone()
                 
@@ -421,7 +424,45 @@ def get_logs():
         days = request.args.get('days', 7, type=int)
         limit = request.args.get('limit', 100, type=int)
         
+        # NEW: Time filter parameters
+        start_time = request.args.get('start_time')  # Format: HH:MM
+        end_time = request.args.get('end_time')      # Format: HH:MM
+        
         logs = get_detection_logs(camera_id, weapon_type, days, limit)
+        
+        # NEW: Filter by time of day if provided
+        if start_time or end_time:
+            filtered_logs = []
+            for log in logs:
+                try:
+                    log_time = datetime.fromisoformat(log['detection_time']).time()
+                    
+                    if start_time and end_time:
+                        start = datetime.strptime(start_time, '%H:%M').time()
+                        end = datetime.strptime(end_time, '%H:%M').time()
+                        
+                        if start <= end:
+                            # Normal range (e.g., 09:00 to 17:00)
+                            if start <= log_time <= end:
+                                filtered_logs.append(log)
+                        else:
+                            # Overnight range (e.g., 22:00 to 06:00)
+                            if log_time >= start or log_time <= end:
+                                filtered_logs.append(log)
+                    elif start_time:
+                        start = datetime.strptime(start_time, '%H:%M').time()
+                        if log_time >= start:
+                            filtered_logs.append(log)
+                    elif end_time:
+                        end = datetime.strptime(end_time, '%H:%M').time()
+                        if log_time <= end:
+                            filtered_logs.append(log)
+                except Exception as e:
+                    print(f"Error filtering log by time: {e}")
+                    continue
+            
+            logs = filtered_logs
+        
         return {"logs": [dict(log) for log in logs]}
     except Exception as e:
         print(f"Get detection logs error: {e}")
@@ -488,6 +529,10 @@ def get_incidents_route():
         assigned_to = request.args.get('assigned_to', type=int)
         limit = request.args.get('limit', 100, type=int)
         
+        # NEW: Time filter parameters
+        start_time = request.args.get('start_time')  # Format: HH:MM
+        end_time = request.args.get('end_time')      # Format: HH:MM
+        
         user_id = request.user.get('user_id')
         user_role = request.user.get('role')
         
@@ -495,6 +540,39 @@ def get_incidents_route():
             incidents_list = get_incidents(status, user_id, limit, officer_view=True)
         else:
             incidents_list = get_incidents(status, assigned_to, limit, officer_view=False)
+        
+        # NEW: Filter by time of day if provided
+        if start_time or end_time:
+            filtered_incidents = []
+            for incident in incidents_list:
+                try:
+                    incident_time = datetime.fromisoformat(incident['detected_at']).time()
+                    
+                    if start_time and end_time:
+                        start = datetime.strptime(start_time, '%H:%M').time()
+                        end = datetime.strptime(end_time, '%H:%M').time()
+                        
+                        if start <= end:
+                            # Normal range (e.g., 09:00 to 17:00)
+                            if start <= incident_time <= end:
+                                filtered_incidents.append(incident)
+                        else:
+                            # Overnight range (e.g., 22:00 to 06:00)
+                            if incident_time >= start or incident_time <= end:
+                                filtered_incidents.append(incident)
+                    elif start_time:
+                        start = datetime.strptime(start_time, '%H:%M').time()
+                        if incident_time >= start:
+                            filtered_incidents.append(incident)
+                    elif end_time:
+                        end = datetime.strptime(end_time, '%H:%M').time()
+                        if incident_time <= end:
+                            filtered_incidents.append(incident)
+                except Exception as e:
+                    print(f"Error filtering incident by time: {e}")
+                    continue
+            
+            incidents_list = filtered_incidents
         
         return {"incidents": [dict(inc) for inc in incidents_list]}
     except Exception as e:

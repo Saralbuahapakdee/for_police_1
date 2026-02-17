@@ -11,10 +11,10 @@ AI_STREAM_URL = "http://ai-flask:6000/stream"
 # Password context for hashing
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Default data
+# Default data - UPDATED with stronger admin password
 DEFAULT_ADMIN = {
     "username": "admin",
-    "password": "admin123",
+    "password": "SecureAdmin@2024!",  # UPDATED: Stronger password
     "email": "admin@security.com",
     "first_name": "Admin",
     "last_name": "User",
