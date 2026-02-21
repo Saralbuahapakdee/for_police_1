@@ -1,4 +1,4 @@
-<!-- src/tabs/LogsTab.vue - UPDATED with labeled time filter -->
+<!-- src/tabs/LogsTab.vue -->
 <template>
   <div class="logs-tab">
     <div class="logs-header">
@@ -145,20 +145,14 @@
                 {{ sortDirection === 'asc' ? '▲' : '▼' }}
               </span>
             </th>
-            <th @click="sortBy('username')" class="sortable">
-              Detected By
-              <span v-if="sortColumn === 'username'" class="sort-icon">
-                {{ sortDirection === 'asc' ? '▲' : '▼' }}
-              </span>
-            </th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="isLoading">
-            <td colspan="6" class="loading-cell">Loading logs...</td>
+            <td colspan="5" class="loading-cell">Loading logs...</td>
           </tr>
           <tr v-else-if="sortedLogs.length === 0">
-            <td colspan="6" class="no-data">No detection logs found for selected filters</td>
+            <td colspan="5" class="no-data">No detection logs found for selected filters</td>
           </tr>
           <tr v-else v-for="log in sortedLogs" :key="log.id" class="log-row">
             <td>{{ formatDateTime(log.detection_time) }}</td>
@@ -174,7 +168,6 @@
                 {{ Math.round(log.confidence_score * 100) }}%
               </span>
             </td>
-            <td>{{ log.username }}</td>
           </tr>
         </tbody>
       </table>
@@ -224,14 +217,12 @@ const filteredLogs = computed(() => {
   
   return logs.value.filter(log => {
     try {
-      const logTime = new Date(log.detection_time).toTimeString().slice(0, 5) // HH:MM format
+      const logTime = new Date(log.detection_time).toTimeString().slice(0, 5)
       
       if (startTime.value && endTime.value) {
         if (startTime.value <= endTime.value) {
-          // Normal range (e.g., 09:00 to 17:00)
           return logTime >= startTime.value && logTime <= endTime.value
         } else {
-          // Overnight range (e.g., 22:00 to 06:00)
           return logTime >= startTime.value || logTime <= endTime.value
         }
       } else if (startTime.value) {
@@ -352,8 +343,6 @@ async function loadLogs() {
     
     if (filterCamera.value) url += `&camera_id=${filterCamera.value}`
     if (filterWeapon.value) url += `&weapon_type=${filterWeapon.value}`
-    
-    // Add time filter parameters
     if (startTime.value) url += `&start_time=${startTime.value}`
     if (endTime.value) url += `&end_time=${endTime.value}`
     
@@ -391,22 +380,20 @@ function exportToCSV() {
     return
   }
   
-  let csv = 'Date,Time,Camera,Location,Weapon Type,Confidence,Detected By\n'
+  let csv = 'Date,Time,Camera,Location,Weapon Type,Confidence\n'
   
   sortedLogs.value.forEach(log => {
     const date = new Date(log.detection_time)
     const dateStr = date.toLocaleDateString()
     const timeStr = date.toLocaleTimeString()
     const conf = Math.round(log.confidence_score * 100)
-    
-    csv += `"${dateStr}","${timeStr}","${log.camera_name}","${log.location}","${formatWeaponName(log.weapon_type)}",${conf}%,"${log.username}"\n`
+    csv += `"${dateStr}","${timeStr}","${log.camera_name}","${log.location}","${formatWeaponName(log.weapon_type)}",${conf}%\n`
   })
   
   const blob = new Blob([csv], { type: 'text/csv' })
   const url = window.URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  
   const timeFilter = startTime.value || endTime.value ? `_${startTime.value || '00:00'}-${endTime.value || '23:59'}` : ''
   a.download = `detection-logs-${new Date().toISOString().split('T')[0]}${timeFilter}.csv`
   a.click()
@@ -414,11 +401,7 @@ function exportToCSV() {
 }
 
 function formatWeaponName(weaponType) {
-  const names = {
-    'knife': 'Knife',
-    'pistol': 'Pistol',
-    'heavy_weapon': 'Heavy Weapon'
-  }
+  const names = { 'knife': 'Knife', 'pistol': 'Pistol', 'heavy_weapon': 'Heavy Weapon' }
   return names[weaponType] || weaponType
 }
 
@@ -427,9 +410,7 @@ function formatDateTime(dateTimeString) {
   try {
     const date = new Date(dateTimeString)
     return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
-  } catch {
-    return dateTimeString
-  }
+  } catch { return dateTimeString }
 }
 
 function getConfidenceClass(score) {
@@ -456,9 +437,7 @@ function getConfidenceClass(score) {
   gap: 15px;
 }
 
-.logs-header h2 {
-  color: #2c3e50;
-}
+.logs-header h2 { color: #2c3e50; }
 
 .logs-filters {
   display: flex;
@@ -477,11 +456,8 @@ function getConfidenceClass(score) {
   cursor: pointer;
 }
 
-.date-input {
-  min-width: 130px;
-}
+.date-input { min-width: 130px; }
 
-/* Time filter with label */
 .time-filter-group {
   display: flex;
   align-items: center;
@@ -514,19 +490,10 @@ function getConfidenceClass(score) {
   color: #2c3e50;
 }
 
-.time-input:focus {
-  outline: none;
-}
-
 .filter-select:focus,
-.date-input:focus {
-  outline: none;
-  border-color: #4a90e2;
-}
+.date-input:focus { outline: none; border-color: #4a90e2; }
 
-.refresh-btn,
-.export-btn,
-.clear-time-btn {
+.refresh-btn, .export-btn, .clear-time-btn {
   padding: 6px 12px;
   color: white;
   border: none;
@@ -537,20 +504,9 @@ function getConfidenceClass(score) {
   height: 34px;
 }
 
-.refresh-btn {
-  background: #4a90e2;
-}
-
-.export-btn {
-  background: #27ae60;
-}
-
-.clear-time-btn {
-  background: #e74c3c;
-  font-size: 0.85rem;
-  font-weight: 700;
-  padding: 6px 10px;
-}
+.refresh-btn { background: #4a90e2; }
+.export-btn { background: #27ae60; }
+.clear-time-btn { background: #e74c3c; font-weight: 700; padding: 6px 10px; }
 
 .refresh-btn:hover { background: #357ab7; }
 .export-btn:hover { background: #219a52; }
@@ -613,15 +569,9 @@ function getConfidenceClass(score) {
   transition: background-color 0.2s ease;
 }
 
-.logs-table th.sortable:hover {
-  background: #e9ecef;
-}
+.logs-table th.sortable:hover { background: #e9ecef; }
 
-.sort-icon {
-  margin-left: 5px;
-  color: #4a90e2;
-  font-size: 0.85rem;
-}
+.sort-icon { margin-left: 5px; color: #4a90e2; font-size: 0.85rem; }
 
 .logs-table td {
   padding: 12px;
@@ -629,12 +579,9 @@ function getConfidenceClass(score) {
   color: #2c3e50;
 }
 
-.log-row:hover {
-  background: #f8f9fa;
-}
+.log-row:hover { background: #f8f9fa; }
 
-.loading-cell,
-.no-data {
+.loading-cell, .no-data {
   text-align: center;
   color: #7f8c8d;
   font-style: italic;
@@ -666,44 +613,14 @@ function getConfidenceClass(score) {
 .confidence-badge.low { background: #f8d7da; color: #e74c3c; }
 
 @media (max-width: 768px) {
-  .logs-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
-  .logs-filters {
-    flex-direction: column;
-    width: 100%;
-  }
-  
-  .filter-select,
-  .date-input,
-  .time-filter-group,
-  .refresh-btn,
-  .export-btn,
-  .clear-time-btn {
-    width: 100%;
-  }
-
-  .time-filter-group {
-    justify-content: space-between;
-  }
-
-  .time-input {
-    flex: 1;
-  }
-  
-  .stats-row {
-    grid-template-columns: 1fr 1fr;
-  }
-  
-  .logs-table {
-    font-size: 0.85rem;
-  }
-  
-  .logs-table th,
-  .logs-table td {
-    padding: 8px;
-  }
+  .logs-header { flex-direction: column; align-items: flex-start; }
+  .logs-filters { flex-direction: column; width: 100%; }
+  .filter-select, .date-input, .time-filter-group,
+  .refresh-btn, .export-btn, .clear-time-btn { width: 100%; }
+  .time-filter-group { justify-content: space-between; }
+  .time-input { flex: 1; }
+  .stats-row { grid-template-columns: 1fr 1fr; }
+  .logs-table { font-size: 0.85rem; }
+  .logs-table th, .logs-table td { padding: 8px; }
 }
 </style>
