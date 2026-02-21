@@ -56,10 +56,6 @@
               <label>Detected At:</label>
               <span>{{ formatDateTime(incident.detected_at) }}</span>
             </div>
-            <div class="detail-item">
-              <label>Created By:</label>
-              <span>{{ incident.created_by_username }}</span>
-            </div>
             <div v-if="incident.assigned_to_username" class="detail-item">
               <label>Assigned To:</label>
               <span>{{ incident.assigned_to_username }}</span>
@@ -165,20 +161,12 @@ function handleStatusUpdate(newStatus) {
 }
 
 function formatStatus(status) {
-  const map = {
-    'pending': 'Pending',
-    'responding': 'Responding',
-    'resolved': 'Resolved'
-  }
+  const map = { 'pending': 'Pending', 'responding': 'Responding', 'resolved': 'Resolved' }
   return map[status] || status
 }
 
 function formatWeaponName(weaponType) {
-  const names = {
-    'knife': 'Knife',
-    'pistol': 'Pistol',
-    'heavy_weapon': 'Heavy Weapon'
-  }
+  const names = { 'knife': 'Knife', 'pistol': 'Pistol', 'heavy_weapon': 'Heavy Weapon' }
   return names[weaponType] || weaponType
 }
 
@@ -187,9 +175,7 @@ function formatDateTime(dateTimeString) {
   try {
     const date = new Date(dateTimeString)
     return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
-  } catch {
-    return dateTimeString
-  }
+  } catch { return dateTimeString }
 }
 </script>
 
@@ -243,9 +229,7 @@ function formatDateTime(dateTimeString) {
   transition: color 0.3s ease;
 }
 
-.close-btn:hover {
-  color: #2c3e50;
-}
+.close-btn:hover { color: #2c3e50; }
 
 .modal-content {
   padding: 20px 25px;
@@ -271,9 +255,7 @@ function formatDateTime(dateTimeString) {
   font-size: 0.95rem;
 }
 
-.incident-image-container {
-  text-align: center;
-}
+.incident-image-container { text-align: center; }
 
 .incident-image {
   max-width: 100%;
@@ -284,9 +266,7 @@ function formatDateTime(dateTimeString) {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
-.incident-image:hover {
-  transform: scale(1.02);
-}
+.incident-image:hover { transform: scale(1.02); }
 
 .image-caption {
   margin-top: 10px;
@@ -351,15 +331,9 @@ function formatDateTime(dateTimeString) {
 }
 
 .input-field:focus,
-.textarea-field:focus {
-  border-color: #4a90e2;
-  outline: none;
-}
+.textarea-field:focus { border-color: #4a90e2; outline: none; }
 
-.textarea-field {
-  resize: vertical;
-  font-family: inherit;
-}
+.textarea-field { resize: vertical; font-family: inherit; }
 
 .action-btn {
   padding: 12px 20px;
@@ -371,23 +345,10 @@ function formatDateTime(dateTimeString) {
   transition: all 0.3s ease;
 }
 
-.action-btn.responding {
-  background: #f39c12;
-}
-
-.action-btn.responding:hover {
-  background: #e67e22;
-  transform: translateY(-2px);
-}
-
-.action-btn.resolved {
-  background: #27ae60;
-}
-
-.action-btn.resolved:hover {
-  background: #229954;
-  transform: translateY(-2px);
-}
+.action-btn.responding { background: #f39c12; }
+.action-btn.responding:hover { background: #e67e22; transform: translateY(-2px); }
+.action-btn.resolved { background: #27ae60; }
+.action-btn.resolved:hover { background: #229954; transform: translateY(-2px); }
 
 .resolved-message {
   text-align: center;
@@ -407,20 +368,9 @@ function formatDateTime(dateTimeString) {
   display: inline-block;
 }
 
-.status-badge.pending {
-  background: #fee;
-  color: #e74c3c;
-}
-
-.status-badge.responding {
-  background: #fff3cd;
-  color: #f39c12;
-}
-
-.status-badge.resolved {
-  background: #d4edda;
-  color: #27ae60;
-}
+.status-badge.pending { background: #fee; color: #e74c3c; }
+.status-badge.responding { background: #fff3cd; color: #f39c12; }
+.status-badge.resolved { background: #d4edda; color: #27ae60; }
 
 .weapon-badge {
   padding: 4px 12px;
@@ -430,18 +380,7 @@ function formatDateTime(dateTimeString) {
   display: inline-block;
 }
 
-.weapon-badge.knife {
-  background: #ffebf4;
-  color: #e73c8c;
-}
-
-.weapon-badge.pistol {
-  background: #e0e2ff;
-  color: #3638ca;
-}
-
-.weapon-badge.heavy_weapon {
-  background: #f3e5f5;
-  color: #9b59b6;
-}
+.weapon-badge.knife { background: #ffebf4; color: #e73c8c; }
+.weapon-badge.pistol { background: #e0e2ff; color: #3638ca; }
+.weapon-badge.heavy_weapon { background: #f3e5f5; color: #9b59b6; }
 </style>
