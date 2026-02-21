@@ -1,6 +1,7 @@
 // OPTIMIZED for INSTANT bounding box updates when MQTT arrives
 // Polling interval reduced to 500ms for near real-time response
 // UPDATED: 1-minute cooldown for detection logging
+// FIX: Cooldown set BEFORE async request to prevent duplicate logs from 40ms polling loop
 
 class DetectionService {
   constructor() {
@@ -19,7 +20,7 @@ class DetectionService {
     this.lastTimestamp = null
     
     this.lastLoggedDetection = new Map()
-    this.LOG_COOLDOWN = 1 * 60 * 1000  // UPDATED: 1 minute instead of 5
+    this.LOG_COOLDOWN = 1 * 60 * 1000  // 1 minute
     
     this.currentAlert = null
     
@@ -66,7 +67,7 @@ class DetectionService {
       this.checkDetection()
     }, 40)
     
-    console.log('🔍 Detection service started - polling every 500ms for INSTANT updates')
+    console.log('🔍 Detection service started - polling every 40ms for INSTANT updates')
   }
 
   stopPolling() {
@@ -162,6 +163,13 @@ class DetectionService {
             continue
           }
           
+          // ✅ Set cooldown IMMEDIATELY before making the async request.
+          // Because polling runs every 40ms, by the time the fetch() below resolves,
+          // many more poll cycles will have fired. Setting it here prevents all of them
+          // from also passing the cooldown check and sending duplicate requests.
+          this.lastLoggedDetection.set(logKey, now)
+          console.log(`🕐 Cooldown set for ${logKey} (1 minute)`)
+          
           const avgConfidence = confidences.reduce((a, b) => a + b, 0) / confidences.length
           
           console.log(`📝 Logging detection with image: ${normalizedType} (${(avgConfidence * 100).toFixed(1)}% confidence)`)
@@ -188,14 +196,10 @@ class DetectionService {
               console.log(`📸 Image saved: ${result.image_path}`)
             }
             
-            if (result.is_new_log) {
-              this.lastLoggedDetection.set(logKey, now)
-              console.log(`🕐 Cooldown started for ${logKey} (1 minute)`)
-              
-              for (const [key, timestamp] of this.lastLoggedDetection.entries()) {
-                if (now - timestamp > this.LOG_COOLDOWN) {
-                  this.lastLoggedDetection.delete(key)
-                }
+            // Cleanup expired cooldowns
+            for (const [key, timestamp] of this.lastLoggedDetection.entries()) {
+              if (now - timestamp > this.LOG_COOLDOWN) {
+                this.lastLoggedDetection.delete(key)
               }
             }
             
@@ -204,6 +208,8 @@ class DetectionService {
               await this.fetchAndSetIncidentAlert(result.incident_id)
             }
           } else {
+            // If the request failed, remove the cooldown so it can be retried
+            this.lastLoggedDetection.delete(logKey)
             const error = await response.json()
             console.error(`❌ Failed to log ${normalizedType} detection:`, error)
           }

@@ -1,4 +1,4 @@
-<!-- src/tabs/LogsTab.vue - UPDATED with time filter -->
+<!-- src/tabs/LogsTab.vue - UPDATED with labeled time filter -->
 <template>
   <div class="logs-tab">
     <div class="logs-header">
@@ -52,29 +52,33 @@
           />
         </template>
         
-        <!-- NEW: Time filter -->
-        <input 
-          type="time" 
-          v-model="startTime" 
-          @change="loadLogs"
-          class="time-input"
-          placeholder="From"
-          title="Filter by start time (e.g., 09:00)"
-        />
-        <input 
-          type="time" 
-          v-model="endTime" 
-          @change="loadLogs"
-          class="time-input"
-          placeholder="To"
-          title="Filter by end time (e.g., 17:00)"
-        />
+        <!-- Time filter with labels -->
+        <div class="time-filter-group">
+          <span class="time-filter-label">From</span>
+          <input 
+            type="time" 
+            v-model="startTime" 
+            @change="loadLogs"
+            class="time-input"
+            title="Filter from this time"
+          />
+        </div>
+        <div class="time-filter-group">
+          <span class="time-filter-label">To</span>
+          <input 
+            type="time" 
+            v-model="endTime" 
+            @change="loadLogs"
+            class="time-input"
+            title="Filter until this time"
+          />
+        </div>
         
         <button v-if="startTime || endTime" 
                 @click="clearTimeFilter" 
                 class="clear-time-btn"
                 title="Clear time filter">
-          ⌫
+          ✕
         </button>
         
         <button @click="exportToCSV" class="export-btn" title="Export to CSV">
@@ -198,7 +202,7 @@ const today = new Date().toISOString().split('T')[0]
 const startDate = ref(getDateDaysAgo(7))
 const endDate = ref(today)
 
-// NEW: Time filter
+// Time filter
 const startTime = ref('')
 const endTime = ref('')
 
@@ -212,7 +216,7 @@ function getDateDaysAgo(days) {
   return date.toISOString().split('T')[0]
 }
 
-// NEW: Filter logs by time of day
+// Filter logs by time of day
 const filteredLogs = computed(() => {
   if (!startTime.value && !endTime.value) {
     return logs.value
@@ -244,8 +248,8 @@ const filteredLogs = computed(() => {
 })
 
 const uniqueCameras = computed(() => {
-  const cameras = new Set(filteredLogs.value.map(log => log.camera_id))
-  return cameras.size
+  const cams = new Set(filteredLogs.value.map(log => log.camera_id))
+  return cams.size
 })
 
 const uniqueWeapons = computed(() => {
@@ -264,19 +268,16 @@ const sortedLogs = computed(() => {
     let aVal = a[sortColumn.value]
     let bVal = b[sortColumn.value]
     
-    // Handle date sorting
     if (sortColumn.value === 'detection_time') {
       aVal = new Date(aVal).getTime()
       bVal = new Date(bVal).getTime()
     }
     
-    // Handle numeric sorting
     if (sortColumn.value === 'confidence_score') {
       aVal = aVal || 0
       bVal = bVal || 0
     }
     
-    // Handle string sorting (case-insensitive)
     if (typeof aVal === 'string' && typeof bVal === 'string') {
       aVal = aVal.toLowerCase()
       bVal = bVal.toLowerCase()
@@ -352,7 +353,7 @@ async function loadLogs() {
     if (filterCamera.value) url += `&camera_id=${filterCamera.value}`
     if (filterWeapon.value) url += `&weapon_type=${filterWeapon.value}`
     
-    // NEW: Add time filter parameters
+    // Add time filter parameters
     if (startTime.value) url += `&start_time=${startTime.value}`
     if (endTime.value) url += `&end_time=${endTime.value}`
     
@@ -463,11 +464,11 @@ function getConfidenceClass(score) {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .filter-select,
-.date-input,
-.time-input {
+.date-input {
   padding: 6px 10px;
   border: 1px solid #ddd;
   border-radius: 6px;
@@ -480,20 +481,45 @@ function getConfidenceClass(score) {
   min-width: 130px;
 }
 
-.time-input {
-  min-width: 95px;
-  background: #f8f9fa;
-  border: 1px solid #e0e0e0;
+/* Time filter with label */
+.time-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #f0f4ff;
+  border: 1px solid #c5d3f0;
+  border-radius: 6px;
+  padding: 0 8px;
+  height: 34px;
 }
 
-.time-input::placeholder {
-  color: #7f8c8d;
-  font-size: 0.85rem;
+.time-filter-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #4a6fa5;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.time-input {
+  border: none;
+  background: transparent;
+  font-size: 0.875rem;
+  padding: 0;
+  width: 90px;
+  outline: none;
+  cursor: pointer;
+  color: #2c3e50;
+}
+
+.time-input:focus {
+  outline: none;
 }
 
 .filter-select:focus,
-.date-input:focus,
-.time-input:focus {
+.date-input:focus {
   outline: none;
   border-color: #4a90e2;
 }
@@ -508,6 +534,7 @@ function getConfidenceClass(score) {
   cursor: pointer;
   font-size: 0.875rem;
   transition: background-color 0.3s ease;
+  height: 34px;
 }
 
 .refresh-btn {
@@ -520,20 +547,14 @@ function getConfidenceClass(score) {
 
 .clear-time-btn {
   background: #e74c3c;
-  font-size: 1rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 6px 10px;
 }
 
-.refresh-btn:hover {
-  background: #357ab7;
-}
-
-.export-btn:hover {
-  background: #219a52;
-}
-
-.clear-time-btn:hover {
-  background: #c0392b;
-}
+.refresh-btn:hover { background: #357ab7; }
+.export-btn:hover { background: #219a52; }
+.clear-time-btn:hover { background: #c0392b; }
 
 .stats-row {
   display: grid;
@@ -628,20 +649,9 @@ function getConfidenceClass(score) {
   display: inline-block;
 }
 
-.weapon-badge.knife {
-  background: #ffebf4;
-  color: #e73c8c;
-}
-
-.weapon-badge.pistol {
-  background: #e0e2ff;
-  color: #3638ca;
-}
-
-.weapon-badge.heavy_weapon {
-  background: #f3e5f5;
-  color: #9b59b6;
-}
+.weapon-badge.knife { background: #ffebf4; color: #e73c8c; }
+.weapon-badge.pistol { background: #e0e2ff; color: #3638ca; }
+.weapon-badge.heavy_weapon { background: #f3e5f5; color: #9b59b6; }
 
 .confidence-badge {
   padding: 4px 12px;
@@ -651,20 +661,9 @@ function getConfidenceClass(score) {
   display: inline-block;
 }
 
-.confidence-badge.high {
-  background: #d4edda;
-  color: #27ae60;
-}
-
-.confidence-badge.medium {
-  background: #fff3cd;
-  color: #f39c12;
-}
-
-.confidence-badge.low {
-  background: #f8d7da;
-  color: #e74c3c;
-}
+.confidence-badge.high { background: #d4edda; color: #27ae60; }
+.confidence-badge.medium { background: #fff3cd; color: #f39c12; }
+.confidence-badge.low { background: #f8d7da; color: #e74c3c; }
 
 @media (max-width: 768px) {
   .logs-header {
@@ -679,11 +678,19 @@ function getConfidenceClass(score) {
   
   .filter-select,
   .date-input,
-  .time-input,
+  .time-filter-group,
   .refresh-btn,
   .export-btn,
   .clear-time-btn {
     width: 100%;
+  }
+
+  .time-filter-group {
+    justify-content: space-between;
+  }
+
+  .time-input {
+    flex: 1;
   }
   
   .stats-row {

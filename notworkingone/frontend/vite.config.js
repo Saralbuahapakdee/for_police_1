@@ -17,7 +17,7 @@ export default defineConfig({
     allowedHosts: [
       "localhost",
       "127.0.0.1",
-      "1eeaf0a7-dafb-4564-95d3-9c154643f2c0.cloud.ce.kmitl.ac.th",
+      "92a9b17a-9ea7-4536-98fd-3c4a619d0968.cloud.ce.kmitl.ac.th",
     ],
   },
 })
