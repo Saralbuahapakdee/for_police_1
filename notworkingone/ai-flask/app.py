@@ -1,3 +1,5 @@
+# notworkingone/ai-flask/app.py - UPDATED: NO TEXT OVERLAY, JUST RAW STREAM
+
 from flask import Flask, Response
 import time
 import cv2
@@ -34,22 +36,46 @@ def on_message(client, userdata, msg):
         print(f"Payload: {json.dumps(parsed, indent=2)}")
         print(f"{'='*50}\n")
         
+        # Process and normalize the detection data
+        processed_objects = {}
+        
+        if parsed.get("objects"):
+            for weapon_type, data in parsed.get("objects", {}).items():
+                # Normalize confidences to always be a list
+                confidences = data.get("confidences", [])
+                if not isinstance(confidences, list):
+                    confidences = [confidences]
+                
+                # Get boxes (default to empty list if not provided)
+                boxes = data.get("boxes", [])
+                
+                # Count number of detections
+                count = len(confidences) if confidences else 0
+                
+                processed_objects[weapon_type] = {
+                    "count": count,
+                    "confidences": confidences,
+                    "boxes": boxes  # [[x1, y1, x2, y2], ...]
+                }
+        
         # Update latest detection with thread safety
         with detection_lock:
             latest_detection = {
                 "detected": parsed.get("detected", False),
-                "objects": parsed.get("objects", {}),
+                "objects": processed_objects,
                 "timestamp": datetime.now().isoformat()
             }
             
         # Log detection details
-        if parsed.get("detected") and parsed.get("objects"):
+        if parsed.get("detected") and processed_objects:
             print("🚨 WEAPON DETECTED!")
-            for weapon_type, data in parsed.get("objects", {}).items():
+            for weapon_type, data in processed_objects.items():
                 count = data.get("count", 0)
                 confidences = data.get("confidences", [])
+                boxes = data.get("boxes", [])
                 print(f"  - {weapon_type}: {count} detected")
                 print(f"    Confidences: {confidences}")
+                print(f"    Boxes: {boxes}")
         else:
             print("✓ No threats detected")
             
@@ -57,142 +83,46 @@ def on_message(client, userdata, msg):
         print(f"Failed to parse JSON: {payload_text}")
     except Exception as e:
         print(f"Error processing message: {e}")
-
-def get_detection_overlay_text():
-    """Generate text overlay for video stream based on latest detection"""
-    with detection_lock:
-        if not latest_detection["detected"] or not latest_detection["objects"]:
-            return "Status: CLEAR | No threats detected"
-        
-        lines = ["⚠️ WEAPON DETECTED!"]
-        for weapon_type, data in latest_detection["objects"].items():
-            count = data.get("count", 0)
-            confidences = data.get("confidences", [])
-            avg_conf = sum(confidences) / len(confidences) if confidences else 0
-            
-            # Format weapon name
-            weapon_name = weapon_type.replace("-", " ").title()
-            lines.append(f"{weapon_name}: {count} ({avg_conf*100:.1f}%)")
-        
-        return " | ".join(lines)
+        import traceback
+        traceback.print_exc()
 
 def generate():
-    rtsp_url = "rtsp://admin2:admin234@161.246.5.20:554/cam/realmonitor?channel=1&subtype=1"
-    latest_frame = None
-    frame_lock = threading.Lock()
-    stop_event = threading.Event()
+    rtsp_url = "rtsp://admin2:459OOPpr0j3ctzaCE61@161.246.5.20:554/cam/realmonitor?channel=1&subtype=1"
     cap = None
 
     def open_capture():
         """Open the RTSP stream with low-latency settings."""
         c = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
-        c.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # keep only the latest frame in buffer
-        c.set(cv2.CAP_PROP_FPS, 15)        # optional: cap FPS to reduce load
+        c.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        c.set(cv2.CAP_PROP_FPS, 15)
         return c if c.isOpened() else None
 
-    def reader():
-        """Continuously grab the newest frame and drop older ones."""
-        nonlocal cap, latest_frame
-        while not stop_event.is_set():
-            if cap is None or not cap.isOpened():
-                cap = open_capture()
-                if cap is None:
-                    time.sleep(0.2)
-                    continue
-
-            ok, frame = cap.read()
-            if not ok or frame is None:
-                try:
-                    cap.release()
-                except Exception:
-                    pass
-                cap = None
+    while True:
+        if cap is None or not cap.isOpened():
+            cap = open_capture()
+            if cap is None:
                 time.sleep(0.2)
                 continue
 
-            with frame_lock:
-                latest_frame = frame
-
-    # Start background reader to keep latency low
-    threading.Thread(target=reader, daemon=True).start()
-
-    try:
-        while True:
-            # Wait until we have at least one frame
-            if latest_frame is None:
-                time.sleep(0.01)
-                continue
-
-            with frame_lock:
-                frame = latest_frame.copy()
-
-            # Get detection text
-            detection_text = get_detection_overlay_text()
-            
-            # Determine text color based on detection status
-            with detection_lock:
-                is_detected = latest_detection["detected"] and latest_detection["objects"]
-            
-            text_color = (0, 0, 255) if is_detected else (0, 255, 0)  # Red if detected, Green if clear
-            
-            # Add text overlay to frame
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 0.7
-            thickness = 2
-            
-            # Add semi-transparent background for better readability
-            (text_width, text_height), baseline = cv2.getTextSize(
-                detection_text, font, font_scale, thickness
-            )
-            
-            # Draw background rectangle
-            cv2.rectangle(
-                frame,
-                (10, 10),
-                (20 + text_width, 40 + text_height),
-                (0, 0, 0),
-                -1
-            )
-            
-            # Draw text
-            cv2.putText(
-                frame,
-                detection_text,
-                (15, 35),
-                font,
-                font_scale,
-                text_color,
-                thickness,
-                cv2.LINE_AA,
-            )
-            
-            # Add timestamp
-            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            cv2.putText(
-                frame,
-                timestamp,
-                (15, frame.shape[0] - 15),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (255, 255, 255),
-                1,
-                cv2.LINE_AA,
-            )
-
-            # Encode frame (lower quality to speed up)
-            ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
-            if not ok:
-                continue
-            
-            frame_bytes = encoded.tobytes()
-            yield (b"--frame\r\n" + b"Content-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n")
-    finally:
-        stop_event.set()
-        if cap is not None:
+        ok, frame = cap.read()
+        if not ok or frame is None:
             try:
                 cap.release()
             except Exception:
                 pass
+            cap = None
+            time.sleep(0.2)
+            continue
+
+        # NO TEXT OVERLAY - Just pass through the raw stream
+        
+        # Encode frame
+        ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+        if not ok:
+            continue
+        
+        frame_bytes = encoded.tobytes()
+        yield (b"--frame\r\n" + b"Content-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n")
 
 @app.get("/stream")
 def stream():
@@ -200,7 +130,7 @@ def stream():
 
 @app.get("/detection")
 def get_detection():
-    """API endpoint to get latest detection data"""
+    """API endpoint to get latest detection data including bounding boxes"""
     with detection_lock:
         return {
             "detected": latest_detection["detected"],

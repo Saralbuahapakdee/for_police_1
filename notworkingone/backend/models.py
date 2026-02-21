@@ -105,18 +105,20 @@ def update_user_profile(username, first_name, last_name, phone, badge_number, de
         return cursor.rowcount > 0
 
 
-def log_detection(user_id, camera_id, weapon_type, confidence_score=0.85):
-    """Log a weapon detection and update daily summary"""
+# Add this updated function to models.py
+
+def log_detection(user_id, camera_id, weapon_type, confidence_score=0.85, image_path=None):
+    """Log a weapon detection with optional image path and update daily summary"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         now = datetime.now()
         today = date.today()
         
-        # Insert detection log
+        # Insert detection log with image path
         cursor.execute('''INSERT INTO detection_logs 
-                         (user_id, camera_id, weapon_type, confidence_score, detection_time, date_only) 
-                         VALUES (?, ?, ?, ?, ?, ?)''',
-                      (user_id, camera_id, weapon_type, confidence_score, now, today))
+                         (user_id, camera_id, weapon_type, confidence_score, detection_time, date_only, image_path) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                      (user_id, camera_id, weapon_type, confidence_score, now, today, image_path))
         
         detection_id = cursor.lastrowid
         
@@ -142,17 +144,19 @@ def log_detection(user_id, camera_id, weapon_type, confidence_score=0.85):
         return detection_id
 
 
-# ========== INCIDENT MANAGEMENT FUNCTIONS ==========
-
-def create_incident(camera_id, weapon_type, detection_id, created_by, location, description=''):
-    """Create a new incident from detection"""
+def create_incident(camera_id, weapon_type, detection_id, created_by, location, description='', image_path=None):
+    """Create a new incident from detection with optional image"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
-        # Get detection time
-        cursor.execute('SELECT detection_time FROM detection_logs WHERE id = ?', (detection_id,))
+        # Get detection time and image path if not provided
+        cursor.execute('SELECT detection_time, image_path FROM detection_logs WHERE id = ?', (detection_id,))
         row = cursor.fetchone()
         detected_at = row['detection_time'] if row else datetime.now()
+        
+        # Use detection's image if incident doesn't have one
+        if not image_path and row and row['image_path']:
+            image_path = row['image_path']
         
         # Generate incident number
         now = datetime.now()
@@ -160,10 +164,10 @@ def create_incident(camera_id, weapon_type, detection_id, created_by, location, 
         
         cursor.execute('''INSERT INTO incidents 
                          (incident_number, camera_id, weapon_type, detection_id, created_by, 
-                          detected_at, location, description, status, priority) 
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'high')''',
+                          detected_at, location, description, status, priority, image_path) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'high', ?)''',
                       (incident_number, camera_id, weapon_type, detection_id, created_by, 
-                       detected_at, location, description))
+                       detected_at, location, description, image_path))
         
         incident_id = cursor.lastrowid
         
@@ -324,22 +328,51 @@ def get_weapon_preferences(user_id):
         cursor = conn.cursor()
         cursor.execute('''SELECT weapon_type, is_enabled FROM weapon_preferences 
                          WHERE user_id = ? ORDER BY weapon_type''', (user_id,))
-        return cursor.fetchall()
+        prefs = cursor.fetchall()
+        
+        # If no preferences exist, create defaults
+        if not prefs:
+            print(f"No preferences found for user {user_id}, creating defaults...")
+            for weapon in DEFAULT_WEAPONS:
+                cursor.execute('''INSERT INTO weapon_preferences 
+                                (user_id, weapon_type, is_enabled) VALUES (?, ?, ?)''',
+                              (user_id, weapon, True))
+            conn.commit()
+            
+            # Fetch the newly created preferences
+            cursor.execute('''SELECT weapon_type, is_enabled FROM weapon_preferences 
+                             WHERE user_id = ? ORDER BY weapon_type''', (user_id,))
+            prefs = cursor.fetchall()
+        
+        return prefs
 
 
 def update_weapon_preferences(user_id, preferences):
-    """Update weapon preferences"""
+    """Update weapon preferences - FIXED to use INSERT OR REPLACE"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
+        
+        print(f"Updating preferences for user {user_id}: {preferences}")
+        
         for pref in preferences:
             weapon_type = pref.get('weapon_type')
             is_enabled = pref.get('is_enabled', True)
             
-            cursor.execute('''UPDATE weapon_preferences 
-                             SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP 
-                             WHERE user_id = ? AND weapon_type = ?''',
-                          (is_enabled, user_id, weapon_type))
+            # Use INSERT OR REPLACE to handle both new and existing preferences
+            cursor.execute('''INSERT OR REPLACE INTO weapon_preferences 
+                             (user_id, weapon_type, is_enabled, updated_at) 
+                             VALUES (
+                                 ?, 
+                                 ?, 
+                                 ?,
+                                 CURRENT_TIMESTAMP
+                             )''',
+                          (user_id, weapon_type, is_enabled))
+            
+            print(f"  - {weapon_type}: {'enabled' if is_enabled else 'disabled'}")
+        
         conn.commit()
+        print(f"✅ Saved {len(preferences)} preferences for user {user_id}")
 
 
 def get_cameras_list():

@@ -1,3 +1,4 @@
+<!-- src/tabs/LogsTab.vue - UPDATED with labeled time filter -->
 <template>
   <div class="logs-tab">
     <div class="logs-header">
@@ -22,7 +23,6 @@
           <option value="custom">Custom Range</option>
         </select>
 
-        <!-- Quick Presets -->
         <select v-if="dateRangeType === 'preset'" v-model="filterDays" @change="loadLogs" class="filter-select">
           <option :value="1">Today</option>
           <option :value="7">Last 7 days</option>
@@ -34,7 +34,6 @@
           <option :value="365">Last year</option>
         </select>
 
-        <!-- Custom Date Range -->
         <template v-if="dateRangeType === 'custom'">
           <input 
             type="date" 
@@ -42,7 +41,6 @@
             @change="loadLogs"
             :max="endDate"
             class="date-input"
-            title="Start Date"
           />
           <input 
             type="date" 
@@ -51,9 +49,37 @@
             :min="startDate"
             :max="today"
             class="date-input"
-            title="End Date"
           />
         </template>
+        
+        <!-- Time filter with labels -->
+        <div class="time-filter-group">
+          <span class="time-filter-label">From</span>
+          <input 
+            type="time" 
+            v-model="startTime" 
+            @change="loadLogs"
+            class="time-input"
+            title="Filter from this time"
+          />
+        </div>
+        <div class="time-filter-group">
+          <span class="time-filter-label">To</span>
+          <input 
+            type="time" 
+            v-model="endTime" 
+            @change="loadLogs"
+            class="time-input"
+            title="Filter until this time"
+          />
+        </div>
+        
+        <button v-if="startTime || endTime" 
+                @click="clearTimeFilter" 
+                class="clear-time-btn"
+                title="Clear time filter">
+          ✕
+        </button>
         
         <button @click="exportToCSV" class="export-btn" title="Export to CSV">
           📥 Export
@@ -69,11 +95,7 @@
     <div class="stats-row">
       <div class="stat-card">
         <div class="stat-label">Total Detections</div>
-        <div class="stat-value">{{ logs.length }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Date Range</div>
-        <div class="stat-value-small">{{ dateRangeDisplay }}</div>
+        <div class="stat-value">{{ filteredLogs.length }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Cameras Monitored</div>
@@ -83,6 +105,10 @@
         <div class="stat-label">Weapon Types</div>
         <div class="stat-value">{{ uniqueWeapons }}</div>
       </div>
+      <div class="stat-card">
+        <div class="stat-label">Average Confidence</div>
+        <div class="stat-value">{{ avgConfidence }}%</div>
+      </div>
     </div>
 
     <div class="logs-table-container">
@@ -91,22 +117,40 @@
           <tr>
             <th @click="sortBy('detection_time')" class="sortable">
               Date & Time 
-              <span v-if="sortColumn === 'detection_time'">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+              <span v-if="sortColumn === 'detection_time'" class="sort-icon">
+                {{ sortDirection === 'asc' ? '▲' : '▼' }}
+              </span>
             </th>
             <th @click="sortBy('camera_name')" class="sortable">
               Camera
-              <span v-if="sortColumn === 'camera_name'">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+              <span v-if="sortColumn === 'camera_name'" class="sort-icon">
+                {{ sortDirection === 'asc' ? '▲' : '▼' }}
+              </span>
             </th>
-            <th>Location</th>
+            <th @click="sortBy('location')" class="sortable">
+              Location
+              <span v-if="sortColumn === 'location'" class="sort-icon">
+                {{ sortDirection === 'asc' ? '▲' : '▼' }}
+              </span>
+            </th>
             <th @click="sortBy('weapon_type')" class="sortable">
               Weapon Type
-              <span v-if="sortColumn === 'weapon_type'">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+              <span v-if="sortColumn === 'weapon_type'" class="sort-icon">
+                {{ sortDirection === 'asc' ? '▲' : '▼' }}
+              </span>
             </th>
             <th @click="sortBy('confidence_score')" class="sortable">
               Confidence
-              <span v-if="sortColumn === 'confidence_score'">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+              <span v-if="sortColumn === 'confidence_score'" class="sort-icon">
+                {{ sortDirection === 'asc' ? '▲' : '▼' }}
+              </span>
             </th>
-            <th>Detected By</th>
+            <th @click="sortBy('username')" class="sortable">
+              Detected By
+              <span v-if="sortColumn === 'username'" class="sort-icon">
+                {{ sortDirection === 'asc' ? '▲' : '▼' }}
+              </span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -136,12 +180,6 @@
       </table>
     </div>
     
-    <div class="logs-footer">
-      <span class="total-count">
-        Showing {{ sortedLogs.length }} of {{ logs.length }} records
-      </span>
-      <span class="date-info">{{ dateRangeDisplay }}</span>
-    </div>
   </div>
 </template>
 
@@ -160,10 +198,13 @@ const dateRangeType = ref('preset')
 const filterDays = ref(7)
 const isLoading = ref(false)
 
-// Date range
 const today = new Date().toISOString().split('T')[0]
 const startDate = ref(getDateDaysAgo(7))
 const endDate = ref(today)
+
+// Time filter
+const startTime = ref('')
+const endTime = ref('')
 
 // Sorting
 const sortColumn = ref('detection_time')
@@ -175,29 +216,55 @@ function getDateDaysAgo(days) {
   return date.toISOString().split('T')[0]
 }
 
-const dateRangeDisplay = computed(() => {
-  if (dateRangeType.value === 'preset') {
-    if (filterDays.value === 1) return 'Today'
-    if (filterDays.value === 7) return 'Last 7 days'
-    if (filterDays.value === 30) return 'Last 30 days'
-    return `Last ${filterDays.value} days`
-  } else {
-    return `${formatDate(startDate.value)} - ${formatDate(endDate.value)}`
+// Filter logs by time of day
+const filteredLogs = computed(() => {
+  if (!startTime.value && !endTime.value) {
+    return logs.value
   }
+  
+  return logs.value.filter(log => {
+    try {
+      const logTime = new Date(log.detection_time).toTimeString().slice(0, 5) // HH:MM format
+      
+      if (startTime.value && endTime.value) {
+        if (startTime.value <= endTime.value) {
+          // Normal range (e.g., 09:00 to 17:00)
+          return logTime >= startTime.value && logTime <= endTime.value
+        } else {
+          // Overnight range (e.g., 22:00 to 06:00)
+          return logTime >= startTime.value || logTime <= endTime.value
+        }
+      } else if (startTime.value) {
+        return logTime >= startTime.value
+      } else if (endTime.value) {
+        return logTime <= endTime.value
+      }
+    } catch (error) {
+      console.error('Error filtering log by time:', error)
+      return true
+    }
+    return true
+  })
 })
 
 const uniqueCameras = computed(() => {
-  const cameras = new Set(logs.value.map(log => log.camera_id))
-  return cameras.size
+  const cams = new Set(filteredLogs.value.map(log => log.camera_id))
+  return cams.size
 })
 
 const uniqueWeapons = computed(() => {
-  const weapons = new Set(logs.value.map(log => log.weapon_type))
+  const weapons = new Set(filteredLogs.value.map(log => log.weapon_type))
   return weapons.size
 })
 
+const avgConfidence = computed(() => {
+  if (filteredLogs.value.length === 0) return 0
+  const sum = filteredLogs.value.reduce((acc, log) => acc + (log.confidence_score || 0), 0)
+  return Math.round((sum / filteredLogs.value.length) * 100)
+})
+
 const sortedLogs = computed(() => {
-  const sorted = [...logs.value].sort((a, b) => {
+  const sorted = [...filteredLogs.value].sort((a, b) => {
     let aVal = a[sortColumn.value]
     let bVal = b[sortColumn.value]
     
@@ -206,12 +273,23 @@ const sortedLogs = computed(() => {
       bVal = new Date(bVal).getTime()
     }
     
+    if (sortColumn.value === 'confidence_score') {
+      aVal = aVal || 0
+      bVal = bVal || 0
+    }
+    
+    if (typeof aVal === 'string' && typeof bVal === 'string') {
+      aVal = aVal.toLowerCase()
+      bVal = bVal.toLowerCase()
+    }
+    
     if (sortDirection.value === 'asc') {
-      return aVal > bVal ? 1 : -1
+      return aVal > bVal ? 1 : aVal < bVal ? -1 : 0
     } else {
-      return aVal < bVal ? 1 : -1
+      return aVal < bVal ? 1 : aVal > bVal ? -1 : 0
     }
   })
+  
   return sorted
 })
 
@@ -219,6 +297,15 @@ onMounted(async () => {
   await loadCameras()
   await loadLogs()
 })
+
+function sortBy(column) {
+  if (sortColumn.value === column) {
+    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortColumn.value = column
+    sortDirection.value = column === 'detection_time' ? 'desc' : 'asc'
+  }
+}
 
 function handleDateRangeChange() {
   if (dateRangeType.value === 'preset') {
@@ -230,13 +317,10 @@ function handleDateRangeChange() {
   loadLogs()
 }
 
-function sortBy(column) {
-  if (sortColumn.value === column) {
-    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
-  } else {
-    sortColumn.value = column
-    sortDirection.value = 'desc'
-  }
+function clearTimeFilter() {
+  startTime.value = ''
+  endTime.value = ''
+  loadLogs()
 }
 
 async function loadCameras() {
@@ -260,7 +344,6 @@ async function loadLogs() {
     if (dateRangeType.value === 'preset') {
       url += `&days=${filterDays.value}`
     } else {
-      // Calculate days between dates
       const start = new Date(startDate.value)
       const end = new Date(endDate.value)
       const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1
@@ -270,6 +353,10 @@ async function loadLogs() {
     if (filterCamera.value) url += `&camera_id=${filterCamera.value}`
     if (filterWeapon.value) url += `&weapon_type=${filterWeapon.value}`
     
+    // Add time filter parameters
+    if (startTime.value) url += `&start_time=${startTime.value}`
+    if (endTime.value) url += `&end_time=${endTime.value}`
+    
     const res = await fetch(url, {
       headers: { 'Authorization': `Bearer ${props.token}` }
     })
@@ -277,7 +364,6 @@ async function loadLogs() {
     if (res.ok) {
       const data = await res.json()
       
-      // Filter by custom date range if needed
       if (dateRangeType.value === 'custom') {
         const start = new Date(startDate.value)
         start.setHours(0, 0, 0, 0)
@@ -300,14 +386,14 @@ async function loadLogs() {
 }
 
 function exportToCSV() {
-  if (logs.value.length === 0) {
+  if (filteredLogs.value.length === 0) {
     alert('No data to export')
     return
   }
   
   let csv = 'Date,Time,Camera,Location,Weapon Type,Confidence,Detected By\n'
   
-  logs.value.forEach(log => {
+  sortedLogs.value.forEach(log => {
     const date = new Date(log.detection_time)
     const dateStr = date.toLocaleDateString()
     const timeStr = date.toLocaleTimeString()
@@ -320,7 +406,9 @@ function exportToCSV() {
   const url = window.URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `detection-logs-${new Date().toISOString().split('T')[0]}.csv`
+  
+  const timeFilter = startTime.value || endTime.value ? `_${startTime.value || '00:00'}-${endTime.value || '23:59'}` : ''
+  a.download = `detection-logs-${new Date().toISOString().split('T')[0]}${timeFilter}.csv`
   a.click()
   window.URL.revokeObjectURL(url)
 }
@@ -341,15 +429,6 @@ function formatDateTime(dateTimeString) {
     return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
   } catch {
     return dateTimeString
-  }
-}
-
-function formatDate(dateString) {
-  if (!dateString) return 'N/A'
-  try {
-    return new Date(dateString).toLocaleDateString()
-  } catch {
-    return dateString
   }
 }
 
@@ -385,20 +464,58 @@ function getConfidenceClass(score) {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .filter-select,
 .date-input {
-  padding: 8px 12px;
+  padding: 6px 10px;
   border: 1px solid #ddd;
   border-radius: 6px;
   background: white;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   cursor: pointer;
 }
 
 .date-input {
-  min-width: 140px;
+  min-width: 130px;
+}
+
+/* Time filter with label */
+.time-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #f0f4ff;
+  border: 1px solid #c5d3f0;
+  border-radius: 6px;
+  padding: 0 8px;
+  height: 34px;
+}
+
+.time-filter-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #4a6fa5;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.time-input {
+  border: none;
+  background: transparent;
+  font-size: 0.875rem;
+  padding: 0;
+  width: 90px;
+  outline: none;
+  cursor: pointer;
+  color: #2c3e50;
+}
+
+.time-input:focus {
+  outline: none;
 }
 
 .filter-select:focus,
@@ -408,28 +525,36 @@ function getConfidenceClass(score) {
 }
 
 .refresh-btn,
-.export-btn {
-  padding: 8px 16px;
-  background: #4a90e2;
+.export-btn,
+.clear-time-btn {
+  padding: 6px 12px;
   color: white;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   transition: background-color 0.3s ease;
+  height: 34px;
+}
+
+.refresh-btn {
+  background: #4a90e2;
 }
 
 .export-btn {
   background: #27ae60;
 }
 
-.refresh-btn:hover {
-  background: #357ab7;
+.clear-time-btn {
+  background: #e74c3c;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 6px 10px;
 }
 
-.export-btn:hover {
-  background: #219a52;
-}
+.refresh-btn:hover { background: #357ab7; }
+.export-btn:hover { background: #219a52; }
+.clear-time-btn:hover { background: #c0392b; }
 
 .stats-row {
   display: grid;
@@ -459,12 +584,6 @@ function getConfidenceClass(score) {
   color: #2c3e50;
 }
 
-.stat-value-small {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #2c3e50;
-}
-
 .logs-table-container {
   overflow-x: auto;
   max-height: 500px;
@@ -491,10 +610,17 @@ function getConfidenceClass(score) {
 .logs-table th.sortable {
   cursor: pointer;
   user-select: none;
+  transition: background-color 0.2s ease;
 }
 
 .logs-table th.sortable:hover {
   background: #e9ecef;
+}
+
+.sort-icon {
+  margin-left: 5px;
+  color: #4a90e2;
+  font-size: 0.85rem;
 }
 
 .logs-table td {
@@ -523,20 +649,9 @@ function getConfidenceClass(score) {
   display: inline-block;
 }
 
-.weapon-badge.knife {
-  background: #ffebee;
-  color: #e74c3c;
-}
-
-.weapon-badge.pistol {
-  background: #fff3e0;
-  color: #f39c12;
-}
-
-.weapon-badge.heavy_weapon {
-  background: #f3e5f5;
-  color: #9b59b6;
-}
+.weapon-badge.knife { background: #ffebf4; color: #e73c8c; }
+.weapon-badge.pistol { background: #e0e2ff; color: #3638ca; }
+.weapon-badge.heavy_weapon { background: #f3e5f5; color: #9b59b6; }
 
 .confidence-badge {
   padding: 4px 12px;
@@ -546,35 +661,9 @@ function getConfidenceClass(score) {
   display: inline-block;
 }
 
-.confidence-badge.high {
-  background: #d4edda;
-  color: #27ae60;
-}
-
-.confidence-badge.medium {
-  background: #fff3cd;
-  color: #f39c12;
-}
-
-.confidence-badge.low {
-  background: #f8d7da;
-  color: #e74c3c;
-}
-
-.logs-footer {
-  margin-top: 15px;
-  padding-top: 15px;
-  border-top: 1px solid #e9ecef;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.total-count,
-.date-info {
-  color: #7f8c8d;
-  font-size: 0.9rem;
-}
+.confidence-badge.high { background: #d4edda; color: #27ae60; }
+.confidence-badge.medium { background: #fff3cd; color: #f39c12; }
+.confidence-badge.low { background: #f8d7da; color: #e74c3c; }
 
 @media (max-width: 768px) {
   .logs-header {
@@ -589,9 +678,19 @@ function getConfidenceClass(score) {
   
   .filter-select,
   .date-input,
+  .time-filter-group,
   .refresh-btn,
-  .export-btn {
+  .export-btn,
+  .clear-time-btn {
     width: 100%;
+  }
+
+  .time-filter-group {
+    justify-content: space-between;
+  }
+
+  .time-input {
+    flex: 1;
   }
   
   .stats-row {
@@ -605,12 +704,6 @@ function getConfidenceClass(score) {
   .logs-table th,
   .logs-table td {
     padding: 8px;
-  }
-  
-  .logs-footer {
-    flex-direction: column;
-    gap: 10px;
-    align-items: flex-start;
   }
 }
 </style>

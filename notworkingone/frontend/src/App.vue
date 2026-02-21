@@ -4,7 +4,6 @@
     <div v-if="!token" class="login-container">
       <div class="login-card">
         <div class="login-header">
-          <div class="badge-icon">🛡️</div>
           <h1>Weapon Detection System</h1>
           <p class="subtitle">Law Enforcement Portal</p>
         </div>
@@ -55,26 +54,38 @@
       @logout="handleLogout"
     />
 
-    <!-- Global Detection Alert Banner - FIXED TEXT -->
-    <div v-if="token && currentDetection.detected && hasObjects" class="global-alert-banner">
+    <!-- NEW: Hidden video stream for image capture (always present when logged in) -->
+    <img 
+      v-if="token" 
+      :src="`/api/video?token=${token}&camera_id=1`" 
+      class="hidden-video-stream video-stream"
+      alt="Hidden stream for capture"
+      crossorigin="anonymous"
+    />
+
+    <!-- Incident Alert Banner -->
+    <div v-if="token && currentAlert" class="incident-alert-banner">
+      <button @click="dismissAlert" class="alert-close-btn" title="Dismiss alert">✕</button>
+      
       <div class="alert-content">
         <div class="alert-icon">🚨</div>
         <div class="alert-info">
-          <strong>WEAPON DETECTED!</strong>
-          <span>
-            <span v-for="(data, weaponType, index) in currentDetection.objects" :key="weaponType">
-              {{ formatWeaponName(weaponType) }} ({{ data.count }}){{ index < Object.keys(currentDetection.objects).length - 1 ? ', ' : '' }}
-            </span>
-          </span>
+          <div class="alert-weapon">
+            {{ formatWeaponName(currentAlert.incident.weapon_type) }}
+          </div>
+          <div class="alert-meta">
+            <span>{{ currentAlert.incident.camera_location }}</span>
+            <span>•</span>
+            <span>{{ formatTime(currentAlert.incident.detected_at) }}</span>
+          </div>
         </div>
-        <div class="alert-time">{{ formatTime(currentDetection.timestamp) }}</div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import MainApp from './components/MainApp.vue'
 import detectionService from './services/detectionService.js'
 
@@ -96,17 +107,9 @@ const loginData = ref({
   password: ''
 })
 
-const currentDetection = ref({
-  detected: false,
-  objects: {},
-  timestamp: null
-})
+const currentAlert = ref(null)
 
 let unsubscribeDetection = null
-
-const hasObjects = computed(() => {
-  return Object.keys(currentDetection.value.objects || {}).length > 0
-})
 
 onMounted(() => {
   const savedToken = localStorage.getItem('authToken')
@@ -135,7 +138,7 @@ onUnmounted(() => {
 
 function startDetectionService() {
   unsubscribeDetection = detectionService.subscribe((state) => {
-    currentDetection.value = state.currentDetection
+    currentAlert.value = state.currentAlert
   })
   
   detectionService.startPolling(token.value)
@@ -152,6 +155,10 @@ function stopDetectionService() {
   detectionService.stopPolling()
   
   console.log('🛑 Global detection service stopped')
+}
+
+function dismissAlert() {
+  detectionService.dismissAlert()
 }
 
 function clearError() {
@@ -217,7 +224,7 @@ function handleLogout() {
   
   token.value = ''
   userData.value = { username: '', fullName: '', role: '', userId: null }
-  currentDetection.value = { detected: false, objects: {}, timestamp: null }
+  currentAlert.value = null
   
   localStorage.removeItem('authToken')
   localStorage.removeItem('currentUsername')
@@ -249,7 +256,8 @@ function formatWeaponName(weaponType) {
 function formatTime(timestamp) {
   if (!timestamp) return ''
   try {
-    return new Date(timestamp).toLocaleTimeString()
+    const date = new Date(timestamp)
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   } catch {
     return ''
   }
@@ -277,6 +285,18 @@ body {
   bottom: 0;
 }
 
+/* Hidden video stream for image capture */
+.hidden-video-stream {
+  position: fixed;
+  top: -9999px;
+  left: -9999px;
+  width: 640px;
+  height: 480px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
 .login-container {
   display: flex;
   align-items: center;
@@ -299,11 +319,6 @@ body {
   color: white;
   padding: 40px 30px;
   text-align: center;
-}
-
-.badge-icon {
-  font-size: 4rem;
-  margin-bottom: 15px;
 }
 
 .login-header h1 {
@@ -398,19 +413,20 @@ body {
   font-weight: 600;
 }
 
-.global-alert-banner {
+/* Incident Alert Banner Styles */
+.incident-alert-banner {
   position: fixed;
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 9999;
   min-width: 400px;
-  max-width: 90vw;
+  max-width: 600px;
   background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
   color: white;
-  padding: 15px 20px;
+  padding: 16px 45px 16px 20px;
   border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(231, 76, 60, 0.4);
+  box-shadow: 0 8px 24px rgba(231, 76, 60, 0.5);
   animation: slideUp 0.3s ease-out, pulse 2s ease-in-out infinite;
 }
 
@@ -427,11 +443,36 @@ body {
 
 @keyframes pulse {
   0%, 100% { 
-    box-shadow: 0 8px 24px rgba(231, 76, 60, 0.4);
+    box-shadow: 0 8px 24px rgba(231, 76, 60, 0.5);
   }
   50% { 
-    box-shadow: 0 8px 32px rgba(231, 76, 60, 0.6);
+    box-shadow: 0 8px 32px rgba(231, 76, 60, 0.7);
   }
+}
+
+.alert-close-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: transparent;
+  color: white;
+  border: none;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1.3rem;
+  font-weight: bold;
+  transition: all 0.2s ease;
+  opacity: 0.8;
+  z-index: 2;
+}
+
+.alert-close-btn:hover {
+  opacity: 1;
+  transform: scale(1.1);
 }
 
 .alert-content {
@@ -443,6 +484,7 @@ body {
 .alert-icon {
   font-size: 2rem;
   animation: shake 0.5s ease-in-out infinite;
+  flex-shrink: 0;
 }
 
 @keyframes shake {
@@ -455,24 +497,21 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 
-.alert-info strong {
-  font-size: 1.1rem;
+.alert-weapon {
+  font-size: 1.3rem;
+  font-weight: 700;
   letter-spacing: 0.5px;
 }
 
-.alert-info span {
-  font-size: 0.95rem;
+.alert-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
   opacity: 0.95;
-}
-
-.alert-time {
-  font-size: 0.85rem;
-  opacity: 0.9;
-  font-weight: 600;
-  white-space: nowrap;
 }
 
 @media (max-width: 768px) {
@@ -484,16 +523,23 @@ body {
     font-size: 1.5rem;
   }
   
-  .badge-icon {
-    font-size: 3rem;
-  }
-  
-  .global-alert-banner {
+  .incident-alert-banner {
     min-width: 90vw;
+    max-width: 90vw;
     bottom: 10px;
+    padding: 14px 40px 14px 16px;
   }
   
-  .alert-content {
+  .alert-icon {
+    font-size: 1.5rem;
+  }
+  
+  .alert-weapon {
+    font-size: 1.1rem;
+  }
+  
+  .alert-meta {
+    font-size: 0.85rem;
     flex-wrap: wrap;
   }
 }

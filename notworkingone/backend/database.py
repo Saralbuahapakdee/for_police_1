@@ -64,7 +64,7 @@ def init_db():
         )
     ''')
     
-    # Create detection_logs table
+    # Create detection_logs table with image_path
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS detection_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,7 +82,7 @@ def init_db():
         )
     ''')
     
-    # Create incidents table - NEW!
+    # Create incidents table with image_path
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS incidents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,6 +102,7 @@ def init_db():
             description TEXT,
             response_notes TEXT,
             resolution_notes TEXT,
+            image_path TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (camera_id) REFERENCES cameras (id),
@@ -112,7 +113,7 @@ def init_db():
         )
     ''')
     
-    # Create incident_actions table - NEW!
+    # Create incident_actions table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS incident_actions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -144,6 +145,27 @@ def init_db():
         )
     ''')
     
+    # Migration: Add image_path column to existing tables if they don't have it
+    try:
+        # Check if image_path exists in detection_logs
+        cursor.execute("PRAGMA table_info(detection_logs)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'image_path' not in columns:
+            cursor.execute('ALTER TABLE detection_logs ADD COLUMN image_path TEXT')
+            print("✅ Added image_path column to detection_logs")
+    except Exception as e:
+        print(f"Note: {e}")
+    
+    try:
+        # Check if image_path exists in incidents
+        cursor.execute("PRAGMA table_info(incidents)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'image_path' not in columns:
+            cursor.execute('ALTER TABLE incidents ADD COLUMN image_path TEXT')
+            print("✅ Added image_path column to incidents")
+    except Exception as e:
+        print(f"Note: {e}")
+    
     # Create default admin user
     cursor.execute('SELECT username FROM users WHERE username = ?', (DEFAULT_ADMIN['username'],))
     if not cursor.fetchone():
@@ -170,3 +192,4 @@ def init_db():
     
     conn.commit()
     conn.close()
+    print("✅ Database initialized successfully with image support")

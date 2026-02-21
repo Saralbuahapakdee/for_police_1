@@ -3,16 +3,13 @@
     <!-- Navigation Header -->
     <div class="nav-header">
       <div class="nav-left">
-        <h2 class="app-title">🛡️ Police Weapon Detection System</h2>
+        <h2 class="app-title">Police Weapon Detection System</h2>
         <div class="nav-tabs">
           <button @click="activeTab = 'incidents'" :class="{ active: activeTab === 'incidents' }" class="nav-tab">
             🚨 Incidents
           </button>
-          <button @click="activeTab = 'multi-camera'" :class="{ active: activeTab === 'multi-camera' }" class="nav-tab">
-            🎥 Multi-Camera
-          </button>
           <button @click="activeTab = 'stream'" :class="{ active: activeTab === 'stream' }" class="nav-tab">
-            📹 Single Feed
+            📹 Live Stream
           </button>
           <button @click="activeTab = 'logs'" :class="{ active: activeTab === 'logs' }" class="nav-tab">
             📋 Detection Logs
@@ -40,7 +37,6 @@
     <!-- Content Area -->
     <div class="content-area">
       <IncidentsTab v-if="activeTab === 'incidents'" :token="token" :user-data="userData" />
-      <MultiCameraTab v-if="activeTab === 'multi-camera'" :token="token" />
       <StreamTab v-if="activeTab === 'stream'" :token="token" />
       <LogsTab v-if="activeTab === 'logs'" :token="token" />
       <DashboardTab v-if="activeTab === 'dashboard'" :token="token" />
@@ -53,7 +49,6 @@
 <script setup>
 import { ref } from 'vue'
 import IncidentsTab from '../tabs/IncidentsTab.vue'
-import MultiCameraTab from '../tabs/MultiCameraTab.vue'
 import StreamTab from '../tabs/StreamTab.vue'
 import LogsTab from '../tabs/LogsTab.vue'
 import DashboardTab from '../tabs/DashboardTab.vue'
