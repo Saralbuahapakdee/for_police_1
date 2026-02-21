@@ -1,4 +1,4 @@
-# notworkingone/ai-flask/app.py - Updated to handle bounding boxes
+# notworkingone/ai-flask/app.py - UPDATED: NO TEXT OVERLAY, JUST RAW STREAM
 
 from flask import Flask, Response
 import time
@@ -86,26 +86,8 @@ def on_message(client, userdata, msg):
         import traceback
         traceback.print_exc()
 
-def get_detection_overlay_text():
-    """Generate text overlay for video stream based on latest detection"""
-    with detection_lock:
-        if not latest_detection["detected"] or not latest_detection["objects"]:
-            return "Status: CLEAR | No threats detected"
-        
-        lines = ["⚠️ WEAPON DETECTED!"]
-        for weapon_type, data in latest_detection["objects"].items():
-            count = data.get("count", 0)
-            confidences = data.get("confidences", [])
-            avg_conf = sum(confidences) / len(confidences) if confidences else 0
-            
-            # Format weapon name
-            weapon_name = weapon_type.replace("-", " ").title()
-            lines.append(f"{weapon_name}: {count} ({avg_conf*100:.1f}%)")
-        
-        return " | ".join(lines)
-
 def generate():
-    rtsp_url = "rtsp://admin2:459OOPpr0j3ctzaCE61@161.246.5.20:554/cam/realmonitor?channel=1&subtype=1"
+    rtsp_url = "rtsp://192.168.1.33:8554/local-loop"
     cap = None
 
     def open_capture():
@@ -132,59 +114,40 @@ def generate():
             time.sleep(0.2)
             continue
 
-        # Get detection text
-        detection_text = get_detection_overlay_text()
-        
-        # Determine text color based on detection status
+        # Get latest detection data thread-safely
         with detection_lock:
-            is_detected = latest_detection["detected"] and latest_detection["objects"]
+            current_detection = latest_detection.copy()
         
-        text_color = (0, 0, 255) if is_detected else (0, 255, 0)
-        
-        # Add text overlay to frame
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.7
-        thickness = 2
-        
-        # Add semi-transparent background for better readability
-        (text_width, text_height), baseline = cv2.getTextSize(
-            detection_text, font, font_scale, thickness
-        )
-        
-        # Draw background rectangle
-        cv2.rectangle(
-            frame,
-            (10, 10),
-            (20 + text_width, 40 + text_height),
-            (0, 0, 0),
-            -1
-        )
-        
-        # Draw text
-        cv2.putText(
-            frame,
-            detection_text,
-            (15, 35),
-            font,
-            font_scale,
-            text_color,
-            thickness,
-            cv2.LINE_AA,
-        )
-        
-        # Add timestamp
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        cv2.putText(
-            frame,
-            timestamp,
-            (15, frame.shape[0] - 15),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (255, 255, 255),
-            1,
-            cv2.LINE_AA,
-        )
+        # Draw bounding boxes if detected
+        if current_detection.get("detected", False):
+            for weapon_type, data in current_detection["objects"].items():
+                boxes = data.get("boxes", [])
+                confidences = data.get("confidences", [])
+                
+                # Ensure we have matching confidences for boxes
+                if len(confidences) < len(boxes):
+                    # Pad with 0 if missing (shouldn't happen with normalized data but good for safety)
+                    confidences.extend([0] * (len(boxes) - len(confidences)))
 
+                for i, box in enumerate(boxes):
+                    if len(box) == 4:
+                        x1, y1, x2, y2 = map(int, box)
+                        conf = confidences[i]
+                        
+                        # Draw rectangle
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                        
+                        # Prepare label
+                        label = f"{weapon_type}: {conf:.2f}"
+                        (label_w, label_h), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+                        
+                        # Draw label background
+                        cv2.rectangle(frame, (x1, y1 - 20), (x1 + label_w, y1), (0, 0, 255), -1)
+                        
+                        # Draw label text
+                        cv2.putText(frame, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        
+       
         # Encode frame
         ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
         if not ok:
@@ -216,7 +179,7 @@ client.connect("fd2249eedb6c43fdbf9e9d318ab38fe4.s1.eu.hivemq.cloud", 8883)
 
 client.on_message = on_message
 client.loop_start()
-client.subscribe("#", qos=1)
+client.subscribe("#", qos=0)
 
 print("MQTT client connected and listening for messages...")
 print("Subscribed to all topics (#)")
