@@ -14,7 +14,6 @@ export default defineConfig({
     },
     host: "0.0.0.0",
     port: 5173,
-    // Explicitly allow access from specific hosts
     allowedHosts: [
       "localhost",
       "127.0.0.1",
