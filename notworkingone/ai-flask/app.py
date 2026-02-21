@@ -1,5 +1,3 @@
-# notworkingone/ai-flask/app.py - UPDATED: NO TEXT OVERLAY, JUST RAW STREAM
-
 from flask import Flask, Response
 import time
 import cv2
@@ -87,7 +85,7 @@ def on_message(client, userdata, msg):
         traceback.print_exc()
 
 def generate():
-    rtsp_url = "rtsp://192.168.1.33:8554/local-loop"
+    rtsp_url = "rtsp://admin2:459OOPpr0j3ctzaCE61@161.246.5.20:554/cam/realmonitor?channel=1&subtype=1"
     cap = None
 
     def open_capture():
