@@ -5,3 +5,4 @@ incident_images/
 __init__.py
 */__init__.py
 *users.db
+users.db
