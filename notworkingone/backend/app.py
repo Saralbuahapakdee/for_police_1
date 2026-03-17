@@ -2,6 +2,7 @@ from flask import Flask
 from flask_cors import CORS
 from database import init_db
 from routes import auth_bp, camera_bp, detection_bp, dashboard_bp, incident_bp, admin_bp
+from stream import start_mqtt_client
 
 # Create Flask app
 app = Flask(__name__)
@@ -17,6 +18,9 @@ app.register_blueprint(admin_bp)
 
 # Initialize database
 init_db()
+
+# Start MQTT client for AI detections
+start_mqtt_client()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

@@ -6,8 +6,6 @@ SECRET_KEY = os.getenv("SECRET_KEY", "CHANGE_ME_SECRET")
 JWT_ALGO = "HS256"
 JWT_EXPIRATION = 3600  # 1 hour
 DATABASE = "users.db"
-AI_STREAM_URL = "http://ai-flask:6000/stream"
-
 # Password context for hashing
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

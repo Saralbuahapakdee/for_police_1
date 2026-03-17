@@ -11,7 +11,8 @@ from models import (
     get_detection_logs, get_dashboard_data,
     create_incident, get_incidents, get_incident_by_id, update_incident, get_incident_actions
 )
-from config import AI_STREAM_URL, DEFAULT_WEAPONS
+from config import DEFAULT_WEAPONS
+from stream import generate, get_latest_detection
 
 # Create blueprints
 auth_bp = Blueprint('auth', __name__)
@@ -710,9 +711,7 @@ def video_stream():
         if not token or not verify_token(token):
             return {"error": "Unauthorized"}, 401
 
-        r = requests.get(AI_STREAM_URL, stream=True)
-        return Response(r.iter_content(chunk_size=1024),
-                        content_type=r.headers.get("Content-Type", "multipart/x-mixed-replace; boundary=frame"))
+        return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
     except Exception as e:
         print(f"Video proxy error: {e}")
         return {"error": "Internal server error"}, 500
@@ -723,21 +722,7 @@ def video_stream():
 def get_detection_status():
     """Get current detection status from AI service - PUBLIC endpoint"""
     try:
-        detection_response = requests.get(f"{AI_STREAM_URL.replace('/stream', '/detection')}", timeout=2)
-        
-        if detection_response.ok:
-            detection_data = detection_response.json()
-            return {
-                "detected": detection_data.get('detected', False),
-                "objects": detection_data.get('objects', {}),
-                "timestamp": detection_data.get('timestamp')
-            }
-        else:
-            return {
-                "detected": False,
-                "objects": {},
-                "timestamp": None
-            }
+        return get_latest_detection()
     except Exception as e:
         print(f"Error getting detection status: {e}")
         return {
