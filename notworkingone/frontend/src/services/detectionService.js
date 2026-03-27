@@ -18,18 +18,9 @@ class DetectionService {
     this.isConnected = false
     this.token = null
     this.lastTimestamp = null
-    
-    this.lastLoggedDetection = new Map()
-    this.LOG_COOLDOWN = 1 * 60 * 1000  // 1 minute
+    this.lastIncidentId = null
     
     this.currentAlert = null
-    
-    // Image capture canvas
-    this.captureCanvas = null
-    
-    // Stream dimensions
-    this.streamWidth = 640
-    this.streamHeight = 480
   }
 
   reset() {
@@ -45,7 +36,7 @@ class DetectionService {
     this.isConnected = false
     this.token = null
     this.lastTimestamp = null
-    this.lastLoggedDetection.clear()
+    this.lastIncidentId = null
     this.currentAlert = null
     console.log('🔄 Detection service reset')
   }
@@ -62,12 +53,12 @@ class DetectionService {
     // Check immediately on start
     this.checkDetection()
     
-    // Poll every 500ms for instant updates (reduced from 2000ms)
+    // Poll every 1000ms for updates
     this.pollInterval = setInterval(() => {
       this.checkDetection()
-    }, 40)
+    }, 1000)
     
-    console.log('🔍 Detection service started - polling every 40ms for INSTANT updates')
+    console.log('🔍 Detection service started - polling every 1000ms')
   }
 
   stopPolling() {
@@ -116,8 +107,11 @@ class DetectionService {
           this.playAlertSound()
           this.showNotification(data)
           
-          // Capture image and log detections
-          await this.captureAndLogDetections(data)
+          if (data.latest_incident_id && data.latest_incident_id !== this.lastIncidentId) {
+            this.lastIncidentId = data.latest_incident_id;
+            console.log(`🚨 NEW INCIDENT ALERT #${data.latest_incident_id} detected from backend`)
+            await this.fetchAndSetIncidentAlert(data.latest_incident_id)
+          }
         }
         
         // Update current detection state (this triggers bounding box redraw)
@@ -134,125 +128,7 @@ class DetectionService {
     }
   }
 
-  async captureAndLogDetections(detection) {
-    if (!this.token) {
-      console.log('⚠️ No token available for logging detection')
-      return
-    }
-    
-    const now = Date.now()
-    const cameraId = 1
-    
-    try {
-      // Capture image from video stream
-      const imageData = await this.captureImageFromStream()
-      
-      for (const [weaponType, data] of Object.entries(detection.objects)) {
-        const confidences = Array.isArray(data.confidences) ? data.confidences : [data.confidences]
-        const count = confidences.length
-        
-        if (count > 0 && confidences.length > 0) {
-          const normalizedType = this.normalizeWeaponType(weaponType)
-          const logKey = `${cameraId}:${normalizedType}`
-          
-          const lastLogged = this.lastLoggedDetection.get(logKey)
-          
-          if (lastLogged && (now - lastLogged) < this.LOG_COOLDOWN) {
-            const remainingTime = Math.ceil((this.LOG_COOLDOWN - (now - lastLogged)) / 1000)
-            console.log(`⏳ Skipping ${normalizedType} log - last logged ${Math.round((now - lastLogged) / 1000)}s ago (cooldown: ${remainingTime}s remaining)`)
-            continue
-          }
-          
-          // ✅ Set cooldown IMMEDIATELY before making the async request.
-          // Because polling runs every 40ms, by the time the fetch() below resolves,
-          // many more poll cycles will have fired. Setting it here prevents all of them
-          // from also passing the cooldown check and sending duplicate requests.
-          this.lastLoggedDetection.set(logKey, now)
-          console.log(`🕐 Cooldown set for ${logKey} (1 minute)`)
-          
-          const avgConfidence = confidences.reduce((a, b) => a + b, 0) / confidences.length
-          
-          console.log(`📝 Logging detection with image: ${normalizedType} (${(avgConfidence * 100).toFixed(1)}% confidence)`)
-          
-          const response = await fetch('/api/log-detection', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${this.token}`
-            },
-            body: JSON.stringify({
-              camera_id: cameraId,
-              weapon_type: normalizedType,
-              confidence_score: avgConfidence,
-              image: imageData
-            })
-          })
-          
-          if (response.ok) {
-            const result = await response.json()
-            console.log(`✅ ${result.message}`)
-            
-            if (result.image_path) {
-              console.log(`📸 Image saved: ${result.image_path}`)
-            }
-            
-            // Cleanup expired cooldowns
-            for (const [key, timestamp] of this.lastLoggedDetection.entries()) {
-              if (now - timestamp > this.LOG_COOLDOWN) {
-                this.lastLoggedDetection.delete(key)
-              }
-            }
-            
-            if (result.incident_id && result.is_new_incident) {
-              console.log(`🚨 NEW INCIDENT #${result.incident_id} created for ${normalizedType}`)
-              await this.fetchAndSetIncidentAlert(result.incident_id)
-            }
-          } else {
-            // If the request failed, remove the cooldown so it can be retried
-            this.lastLoggedDetection.delete(logKey)
-            const error = await response.json()
-            console.error(`❌ Failed to log ${normalizedType} detection:`, error)
-          }
-          
-          await new Promise(resolve => setTimeout(resolve, 100))
-        }
-      }
-    } catch (error) {
-      console.error('Error capturing and logging detections:', error)
-    }
-  }
 
-  async captureImageFromStream() {
-    return new Promise((resolve) => {
-      try {
-        const videoStream = document.querySelector('.video-stream')
-        
-        if (!videoStream) {
-          console.warn('⚠️ No video stream found for image capture')
-          resolve(null)
-          return
-        }
-        
-        if (!this.captureCanvas) {
-          this.captureCanvas = document.createElement('canvas')
-        }
-        
-        this.captureCanvas.width = videoStream.naturalWidth || videoStream.width || 640
-        this.captureCanvas.height = videoStream.naturalHeight || videoStream.height || 480
-        
-        const ctx = this.captureCanvas.getContext('2d')
-        ctx.drawImage(videoStream, 0, 0, this.captureCanvas.width, this.captureCanvas.height)
-        
-        const imageData = this.captureCanvas.toDataURL('image/jpeg', 0.8)
-        
-        console.log('📸 Captured frame from video stream')
-        resolve(imageData)
-      } catch (error) {
-        console.error('Error capturing image:', error)
-        resolve(null)
-      }
-    })
-  }
 
   async fetchAndSetIncidentAlert(incidentId) {
     try {

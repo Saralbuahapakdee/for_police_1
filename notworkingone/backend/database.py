@@ -1,6 +1,6 @@
 import sqlite3
 from contextlib import contextmanager
-from config import DATABASE, pwd_ctx, DEFAULT_ADMIN, DEFAULT_WEAPONS, DEFAULT_CAMERAS
+from config import DATABASE, pwd_ctx, DEFAULT_ADMIN, SYSTEM_USER, DEFAULT_WEAPONS, DEFAULT_CAMERAS
 
 
 @contextmanager
@@ -182,6 +182,22 @@ def init_db():
             cursor.execute('''INSERT OR IGNORE INTO weapon_preferences 
                             (user_id, weapon_type, is_enabled) VALUES (?, ?, ?)''',
                           (admin_user_id, weapon, True))
+    
+    # Create default system user
+    cursor.execute('SELECT username FROM users WHERE username = ?', (SYSTEM_USER['username'],))
+    if not cursor.fetchone():
+        system_password_hash = pwd_ctx.hash(SYSTEM_USER['password'])
+        cursor.execute('''INSERT INTO users 
+                         (username, password_hash, email, first_name, last_name, role) 
+                         VALUES (?, ?, ?, ?, ?, ?)''',
+                      (SYSTEM_USER['username'], system_password_hash, SYSTEM_USER['email'],
+                       SYSTEM_USER['first_name'], SYSTEM_USER['last_name'], 'system'))
+        system_user_id = cursor.lastrowid
+        
+        for weapon in DEFAULT_WEAPONS:
+            cursor.execute('''INSERT OR IGNORE INTO weapon_preferences 
+                            (user_id, weapon_type, is_enabled) VALUES (?, ?, ?)''',
+                          (system_user_id, weapon, True))
     
     # Create default cameras
     for cam_name, location, desc in DEFAULT_CAMERAS:

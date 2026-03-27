@@ -19,6 +19,15 @@ DEFAULT_ADMIN = {
     "role": "admin"
 }
 
+SYSTEM_USER = {
+    "username": "system",
+    "password": "SystemUserNoLogin123!",
+    "email": "system@security.local",
+    "first_name": "System",
+    "last_name": "Automated",
+    "role": "system"
+}
+
 DEFAULT_WEAPONS = ['knife', 'pistol', 'heavy_weapon']
 
 DEFAULT_CAMERAS = [

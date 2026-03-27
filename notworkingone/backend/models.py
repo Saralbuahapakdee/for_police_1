@@ -160,7 +160,10 @@ def create_incident(camera_id, weapon_type, detection_id, created_by, location, 
         
         # Generate incident number
         now = datetime.now()
-        incident_number = f"INC-{now.strftime('%Y%m%d-%H%M%S')}"
+        import random
+        # Append microseconds to guarantee uniqueness if multiple weapons arrive at the exact same second
+        unique_suffix = now.strftime('%f')[:4]  
+        incident_number = f"INC-{now.strftime('%Y%m%d-%H%M%S')}-{unique_suffix}"
         
         cursor.execute('''INSERT INTO incidents 
                          (incident_number, camera_id, weapon_type, detection_id, created_by, 
@@ -482,3 +485,97 @@ def get_dashboard_data(user_id, days=7, camera_id=None):
             "weapon_totals": [dict(row) for row in weapon_totals],
             "recent_detections": [dict(row) for row in recent_detections]
         }
+
+import threading
+# Global lock to prevent race conditions during rapid MQTT messages
+# This ensures that multiple threads checking for cooldown simultaneously
+# do not both evaluate to True before the first has written to the DB.
+_detection_cooldown_lock = threading.Lock()
+
+def process_system_detection(camera_id, weapon_type, confidence_score, image_bytes=None):
+    """
+    Process an automated system detection from the backend stream.
+    Checks cooldown, saves image, logs detection, and handles incident creation.
+    Returns the detection_id, incident_id (if any), and image_path (if any).
+    """
+    from datetime import datetime, timedelta
+    import os
+    from config import SYSTEM_USER
+    
+    with _detection_cooldown_lock:
+        # Get system user ID
+        system_user_id = 1
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT id FROM users WHERE username = ?', (SYSTEM_USER['username'],))
+            row = cursor.fetchone()
+            if row:
+                system_user_id = row['id']
+                
+            # Check cooldown
+            one_minute_ago = datetime.now() - timedelta(minutes=1)
+            cursor.execute('''
+                SELECT id, detection_time, image_path FROM detection_logs 
+                WHERE camera_id = ? 
+                  AND weapon_type = ? 
+                  AND detection_time >= ?
+                ORDER BY detection_time DESC
+                LIMIT 1
+            ''', (camera_id, weapon_type, one_minute_ago))
+            
+            existing_detection = cursor.fetchone()
+            
+            if existing_detection:
+                time_since = (datetime.now() - datetime.fromisoformat(existing_detection['detection_time'])).total_seconds()
+                print(f"⏳ System skipping log for {weapon_type} on camera {camera_id} - recent detection {int(time_since)}s ago")
+                return {"detection_id": existing_detection['id'], "incident_id": None, "image_path": existing_detection['image_path'], "is_new": False}
+
+        # If we reach here, it's a new detection
+        image_path = None
+        if image_bytes:
+            try:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"{weapon_type}_{camera_id}_{timestamp}.jpg"
+                IMAGES_DIR = os.path.join(os.path.dirname(__file__), 'incident_images')
+                os.makedirs(IMAGES_DIR, exist_ok=True)
+                filepath = os.path.join(IMAGES_DIR, filename)
+                
+                with open(filepath, 'wb') as f:
+                    f.write(image_bytes)
+                image_path = filename
+            except Exception as e:
+                print(f"❌ Error saving system image: {e}")
+                
+        # Create detection
+        detection_id = log_detection(system_user_id, camera_id, weapon_type, confidence_score, image_path)
+        print(f"✅ Created NEW SYSTEM detection log #{detection_id} for {weapon_type}")
+        
+        incident_id = None
+        if confidence_score >= 0.80:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                one_minute_ago = datetime.now() - timedelta(minutes=1)
+
+                print(f"DEBUG: Checking for existing incident: Cam={camera_id}, Type={weapon_type}")
+
+                cursor.execute('''
+                    SELECT id, status FROM incidents 
+                    WHERE camera_id = ? AND weapon_type = ? AND detected_at >= ? AND status IN ('pending', 'responding')
+                    ORDER BY detected_at DESC LIMIT 1
+                ''', (camera_id, weapon_type, one_minute_ago))
+                existing_incident = cursor.fetchone()
+
+                if existing_incident:
+                    incident_id = existing_incident['id']
+                    cursor.execute('UPDATE detection_logs SET incident_id = ? WHERE id = ?', (incident_id, detection_id))
+                    conn.commit()
+                else:
+                    cursor.execute('SELECT location FROM cameras WHERE id = ?', (camera_id,))
+
+                    print(f"DEBUG: No existing incident found. Creating NEW for: {weapon_type}")
+
+                    row = cursor.fetchone()
+                    location = row['location'] if row else 'Unknown'
+                    incident_id = create_incident(camera_id, weapon_type, detection_id, system_user_id, location, f"Automatic system incident for {weapon_type}", image_path)
+                    
+        return {"detection_id": detection_id, "incident_id": incident_id, "image_path": image_path, "is_new": True}
