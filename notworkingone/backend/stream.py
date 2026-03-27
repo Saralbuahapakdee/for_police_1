@@ -15,6 +15,22 @@ latest_detection = {
 detection_lock = threading.Lock()
 mqtt_client = None
 
+# Per-camera RTSP URLs
+CAMERA_RTSP_URLS = {
+    "parking_lot": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+}
+
+DEFAULT_RTSP_URL = "rtsp://admin2:459OOPpr0j3ctzaCE61@161.246.5.20:554/cam/realmonitor?channel=1&subtype=1"
+
+
+def get_rtsp_url(camera_name: str) -> str:
+    """Return the RTSP URL for the given camera name (normalised key)."""
+    if not camera_name:
+        return DEFAULT_RTSP_URL
+    key = camera_name.lower().replace(" ", "_")
+    return CAMERA_RTSP_URLS.get(key, DEFAULT_RTSP_URL)
+
+
 def get_latest_detection():
     with detection_lock:
         return {
@@ -90,8 +106,11 @@ def on_message(client, userdata, msg):
         import traceback
         traceback.print_exc()
 
-def generate():
-    rtsp_url = "rtsp://admin2:459OOPpr0j3ctzaCE61@161.246.5.20:554/cam/realmonitor?channel=1&subtype=1"
+def generate(camera_name: str = None):
+    """Generate MJPEG frames for the given camera (uses its own RTSP URL)."""
+    rtsp_url = get_rtsp_url(camera_name)
+    print(f"📹 Starting stream for camera '{camera_name}' → {rtsp_url}")
+
     cap = None
 
     def open_capture():
@@ -132,7 +151,6 @@ def generate():
                 
                 # Ensure we have matching confidences for boxes
                 if len(confidences) < len(boxes):
-                    # Pad with 0 if missing (shouldn't happen with normalized data but good for safety)
                     confidences.extend([0] * (len(boxes) - len(confidences)))
 
                 for i, box in enumerate(boxes):

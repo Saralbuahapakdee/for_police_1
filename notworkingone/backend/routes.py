@@ -707,11 +707,27 @@ def video_stream():
     try:
         token = request.args.get("token")
         camera_id = request.args.get("camera_id", 1, type=int)
-        
+ 
         if not token or not verify_token(token):
             return {"error": "Unauthorized"}, 401
-
-        return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+ 
+        # Resolve the camera name so stream.py can pick the right RTSP URL
+        camera_name = None
+        try:
+            from database import get_db_connection
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT camera_name FROM cameras WHERE id = ?", (camera_id,))
+                row = cursor.fetchone()
+                if row:
+                    camera_name = row["camera_name"]
+        except Exception as e:
+            print(f"Could not resolve camera name for id {camera_id}: {e}")
+ 
+        return Response(
+            generate(camera_name),
+            mimetype="multipart/x-mixed-replace; boundary=frame"
+        )
     except Exception as e:
         print(f"Video proxy error: {e}")
         return {"error": "Internal server error"}, 500
