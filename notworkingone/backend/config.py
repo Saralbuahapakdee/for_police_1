@@ -30,10 +30,14 @@ SYSTEM_USER = {
 
 DEFAULT_WEAPONS = ['knife', 'pistol', 'heavy_weapon']
 
+RTSP_STREAMS = {
+    1: "rtsp://admin2:459OOPpr0j3ctzaCE61@161.246.5.20:554/cam/realmonitor?channel=1&subtype=1",
+    2: "rtsp://fuGk55rSwiDtVigRfxPRkVlyiJPGmDZW:ZqniBPd7ILatymFgJcK9W@test.rtsp.stream/people"
+}
+
 DEFAULT_CAMERAS = [
     ('Main Entrance', 'Building A - Front Gate', 'Primary entrance monitoring'),
-    ('Parking Lot', 'Building A - Parking Level 1', 'Vehicle and pedestrian monitoring'),
-    ('Lobby', 'Building A - Main Lobby', 'Reception area surveillance'),
+    ('Testing Camera', 'Lab', 'RTSP Testing Stream'),
     ('Corridor 1F', 'Building A - First Floor Corridor', 'Hallway monitoring'),
     ('Back Exit', 'Building A - Emergency Exit', 'Secondary exit monitoring')
 ]

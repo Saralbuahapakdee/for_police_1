@@ -5,35 +5,35 @@ from paho import mqtt
 import json
 import threading
 from datetime import datetime
+from config import RTSP_STREAMS
 
-# Global variables to store latest detection data
-latest_detection = {
-    "detected": False,
-    "objects": {},
-    "timestamp": None,
-    "latest_incident_id": None
-}
+# Global variables to store latest detection data per camera
+latest_detections = {}
 detection_lock = threading.Lock()
 mqtt_client = None
 
-# Global variables for continuous stream capture
-latest_raw_frame = None
-frame_lock = threading.Lock()
-capture_thread = None
+# Global variables for continuous stream capture per camera
+latest_raw_frames = {}
+frame_locks = {}
+capture_threads = {}
 
-def get_latest_detection():
+def get_latest_detection(camera_id=1):
     with detection_lock:
+        det = latest_detections.get(camera_id, {
+            "detected": False,
+            "objects": {},
+            "timestamp": None,
+            "latest_incident_id": None
+        })
         return {
-            "detected": latest_detection["detected"],
-            "objects": latest_detection["objects"],
-            "timestamp": latest_detection["timestamp"],
-            "latest_incident_id": latest_detection.get("latest_incident_id")
+            "detected": det.get("detected"),
+            "objects": det.get("objects"),
+            "timestamp": det.get("timestamp"),
+            "latest_incident_id": det.get("latest_incident_id")
         }
 
-def capture_loop():
+def capture_loop(camera_id, rtsp_url):
     """Background thread to constantly read RTSP and hold latest raw frame"""
-    global latest_raw_frame
-    rtsp_url = "rtsp://admin2:459OOPpr0j3ctzaCE61@161.246.5.20:554/cam/realmonitor?channel=1&subtype=1"
     cap = None
 
     def open_capture():
@@ -61,15 +61,23 @@ def capture_loop():
             time.sleep(0.2)
             continue
             
-        with frame_lock:
-            latest_raw_frame = frame.copy()
+        with frame_locks[camera_id]:
+            latest_raw_frames[camera_id] = frame.copy()
 
-def start_capture_thread():
-    global capture_thread
-    if capture_thread is None:
-        capture_thread = threading.Thread(target=capture_loop, daemon=True)
-        capture_thread.start()
-        print("🎥 Background video capture thread started")
+def start_capture_threads():
+    for camera_id, rtsp_url in RTSP_STREAMS.items():
+        if camera_id not in capture_threads:
+            # Initialize locks and vars for this camera if not present
+            if camera_id not in frame_locks:
+                frame_locks[camera_id] = threading.Lock()
+            if camera_id not in latest_raw_frames:
+                latest_raw_frames[camera_id] = None
+            
+            # Start thread
+            t = threading.Thread(target=capture_loop, args=(camera_id, rtsp_url), daemon=True)
+            t.start()
+            capture_threads[camera_id] = t
+            print(f"🎥 Background video capture thread started for camera {camera_id}")
 
 def draw_boxes_on_frame(frame, detection_objects):
     """Draw bounding boxes based on detection objects"""
@@ -98,7 +106,7 @@ def on_connect(client, userdata, flags, rc, properties=None):
     print("CONNACK received with code %s." % rc)
 
 def on_message(client, userdata, msg):
-    global latest_detection, latest_raw_frame
+    global latest_detections, latest_raw_frames
     from models import process_system_detection
     
     try:
@@ -111,6 +119,9 @@ def on_message(client, userdata, msg):
         print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"Payload: {json.dumps(parsed, indent=2)}")
         print(f"{'='*50}\n")
+        
+        # Determine camera_id from MQTT if provided, otherwise default to 1
+        camera_id = parsed.get("camera_id", 1)
         
         # Process and normalize the detection data
         processed_objects = {}
@@ -130,26 +141,25 @@ def on_message(client, userdata, msg):
                     "boxes": boxes
                 }
         
-        # Update latest detection with thread safety
+        # Update latest detection for this camera with thread safety
         with detection_lock:
-            latest_detection = {
-                "detected": parsed.get("detected", False),
-                "objects": processed_objects,
-                "timestamp": datetime.now().isoformat()
-            }
+            if camera_id not in latest_detections:
+                latest_detections[camera_id] = {}
+                
+            latest_detections[camera_id]["detected"] = parsed.get("detected", False)
+            latest_detections[camera_id]["objects"] = processed_objects
+            latest_detections[camera_id]["timestamp"] = datetime.now().isoformat()
             
         # Log detection details and process system detection
         if parsed.get("detected") and processed_objects:
-            print("🚨 WEAPON DETECTED!")
+            print(f"🚨 WEAPON DETECTED on camera {camera_id}!")
             
             # Grab latest frame for automated image logging
             current_frame = None
-            with frame_lock:
-                if latest_raw_frame is not None:
-                    current_frame = latest_raw_frame.copy()
-            
-            # Default camera_id for stream is 1
-            camera_id = 1
+            if camera_id in frame_locks and camera_id in latest_raw_frames:
+                with frame_locks[camera_id]:
+                    if latest_raw_frames[camera_id] is not None:
+                        current_frame = latest_raw_frames[camera_id].copy()
             
             # Log all detected weapons
             for weapon_type, data in processed_objects.items():
@@ -180,7 +190,9 @@ def on_message(client, userdata, msg):
                     print(f"  -> Successfully logged {weapon_type} detection #{result.get('detection_id')} in background.")
                     if result.get("incident_id"):
                         with detection_lock:
-                            latest_detection["latest_incident_id"] = result.get("incident_id")
+                            if camera_id not in latest_detections:
+                                latest_detections[camera_id] = {}
+                            latest_detections[camera_id]["latest_incident_id"] = result.get("incident_id")
         else:
             print("✓ No threats detected")
             
@@ -191,18 +203,18 @@ def on_message(client, userdata, msg):
         import traceback
         traceback.print_exc()
 
-def generate():
+def generate(camera_id=1):
     """Video stream generator for frontend clients"""
-    global latest_raw_frame
     
-    # Ensure background thread is running
-    start_capture_thread()
+    # Ensure background threads are running
+    start_capture_threads()
     
     while True:
         frame_copy = None
-        with frame_lock:
-            if latest_raw_frame is not None:
-                frame_copy = latest_raw_frame.copy()
+        if camera_id in frame_locks and camera_id in latest_raw_frames:
+            with frame_locks[camera_id]:
+                if latest_raw_frames[camera_id] is not None:
+                    frame_copy = latest_raw_frames[camera_id].copy()
                 
         if frame_copy is None:
             time.sleep(0.1)
@@ -210,7 +222,7 @@ def generate():
             
         # Get latest detection data thread-safely
         with detection_lock:
-            current_detection = latest_detection.copy()
+            current_detection = latest_detections.get(camera_id, {}).copy()
         
         # Draw bounding boxes if detected
         if current_detection.get("detected", False):
@@ -230,9 +242,9 @@ def generate():
 def start_mqtt_client():
     global mqtt_client
     
-    # Start the continuous capture thread here as well to assure it's always running 
+    # Start the continuous capture threads here as well to assure they're always running 
     # even before a frontend connects
-    start_capture_thread()
+    start_capture_threads()
     
     if mqtt_client is not None:
         return

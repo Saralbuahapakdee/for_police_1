@@ -383,7 +383,7 @@ def get_cameras_list():
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''SELECT id, camera_name, location, description, is_active 
-                         FROM cameras WHERE is_active = TRUE ORDER BY camera_name''')
+                         FROM cameras WHERE is_active = TRUE''')
         return cursor.fetchall()
 
 

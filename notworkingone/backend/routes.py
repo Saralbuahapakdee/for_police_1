@@ -711,7 +711,7 @@ def video_stream():
         if not token or not verify_token(token):
             return {"error": "Unauthorized"}, 401
 
-        return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+        return Response(generate(camera_id), mimetype="multipart/x-mixed-replace; boundary=frame")
     except Exception as e:
         print(f"Video proxy error: {e}")
         return {"error": "Internal server error"}, 500
