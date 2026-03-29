@@ -258,7 +258,7 @@ def start_mqtt_client():
         mqtt_client.connect("nafbb59e.ala.asia-southeast1.emqxsl.com", 8883)
         mqtt_client.on_message = on_message
         mqtt_client.loop_start()
-        mqtt_client.subscribe("#", qos=0)
+        mqtt_client.subscribe("test/", qos=0)
         print("MQTT client connected and listening for messages...")
         print("Subscribed to all topics (#)")
     except Exception as e:
