@@ -73,6 +73,8 @@
 </template>
 
 <script setup>
+import { formatDateTime } from '../../services/dateUtils.js'
+
 defineProps({
   incidents: Array,
   sortColumn: String,
@@ -97,16 +99,6 @@ function formatWeaponName(weaponType) {
     'heavy_weapon': 'Heavy Weapon'
   }
   return names[weaponType] || weaponType
-}
-
-function formatDateTime(dateTimeString) {
-  if (!dateTimeString) return 'N/A'
-  try {
-    const date = new Date(dateTimeString)
-    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
-  } catch {
-    return dateTimeString
-  }
 }
 </script>
 
@@ -177,20 +169,9 @@ function formatDateTime(dateTimeString) {
   display: inline-block;
 }
 
-.status-badge.pending {
-  background: #fee;
-  color: #e74c3c;
-}
-
-.status-badge.responding {
-  background: #fff3cd;
-  color: #f39c12;
-}
-
-.status-badge.resolved {
-  background: #d4edda;
-  color: #27ae60;
-}
+.status-badge.pending { background: #fee; color: #e74c3c; }
+.status-badge.responding { background: #fff3cd; color: #f39c12; }
+.status-badge.resolved { background: #d4edda; color: #27ae60; }
 
 .weapon-badge {
   padding: 4px 12px;
@@ -200,20 +181,9 @@ function formatDateTime(dateTimeString) {
   display: inline-block;
 }
 
-.weapon-badge.knife {
-  background: #ffebf4;
-  color: #e73c8c;
-}
-
-.weapon-badge.pistol {
-  background: #e0e2ff;
-  color: #3638ca;
-}
-
-.weapon-badge.heavy_weapon {
-  background: #f3e5f5;
-  color: #9b59b6;
-}
+.weapon-badge.knife { background: #ffebf4; color: #e73c8c; }
+.weapon-badge.pistol { background: #e0e2ff; color: #3638ca; }
+.weapon-badge.heavy_weapon { background: #f3e5f5; color: #9b59b6; }
 
 @media (max-width: 1200px) {
   .table-header,

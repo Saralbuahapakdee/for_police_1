@@ -48,6 +48,8 @@
 </template>
 
 <script setup>
+import { formatDateTime } from '../../services/dateUtils.js'
+
 defineProps({
   incidents: {
     type: Array,
@@ -79,16 +81,6 @@ function formatWeaponName(weaponType) {
   }
   return names[weaponType] || weaponType
 }
-
-function formatDateTime(dateTimeString) {
-  if (!dateTimeString) return 'N/A'
-  try {
-    const date = new Date(dateTimeString)
-    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
-  } catch {
-    return dateTimeString
-  }
-}
 </script>
 
 <style scoped>
@@ -118,13 +110,8 @@ function formatDateTime(dateTimeString) {
   box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.2);
 }
 
-.incident-card.responding { 
-  border-left-color: #f39c12; 
-}
-
-.incident-card.resolved { 
-  border-left-color: #27ae60; 
-}
+.incident-card.responding { border-left-color: #f39c12; }
+.incident-card.resolved { border-left-color: #27ae60; }
 
 .incident-image-thumb {
   position: relative;
@@ -181,20 +168,9 @@ function formatDateTime(dateTimeString) {
   display: inline-block;
 }
 
-.status-badge.pending {
-  background: #fee;
-  color: #e74c3c;
-}
-
-.status-badge.responding {
-  background: #fff3cd;
-  color: #f39c12;
-}
-
-.status-badge.resolved {
-  background: #d4edda;
-  color: #27ae60;
-}
+.status-badge.pending { background: #fee; color: #e74c3c; }
+.status-badge.responding { background: #fff3cd; color: #f39c12; }
+.status-badge.resolved { background: #d4edda; color: #27ae60; }
 
 .weapon-badge {
   padding: 4px 12px;
@@ -204,24 +180,11 @@ function formatDateTime(dateTimeString) {
   display: inline-block;
 }
 
-.weapon-badge.knife {
-  background: #ffebf4;
-  color: #e73c8c;
-}
-
-.weapon-badge.pistol {
-  background: #e0e2ff;
-  color: #3638ca;
-}
-
-.weapon-badge.heavy_weapon {
-  background: #f3e5f5;
-  color: #9b59b6;
-}
+.weapon-badge.knife { background: #ffebf4; color: #e73c8c; }
+.weapon-badge.pistol { background: #e0e2ff; color: #3638ca; }
+.weapon-badge.heavy_weapon { background: #f3e5f5; color: #9b59b6; }
 
 @media (max-width: 768px) {
-  .incident-cards {
-    grid-template-columns: 1fr;
-  }
+  .incident-cards { grid-template-columns: 1fr; }
 }
 </style>

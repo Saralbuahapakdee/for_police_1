@@ -130,6 +130,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import { formatDateTime } from '../../services/dateUtils.js'
 
 const props = defineProps({
   incident: Object,
@@ -181,16 +182,6 @@ function formatWeaponName(weaponType) {
   }
   return names[weaponType] || weaponType
 }
-
-function formatDateTime(dateTimeString) {
-  if (!dateTimeString) return 'N/A'
-  try {
-    const date = new Date(dateTimeString)
-    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
-  } catch {
-    return dateTimeString
-  }
-}
 </script>
 
 <style scoped>
@@ -229,10 +220,7 @@ function formatDateTime(dateTimeString) {
   border-radius: 12px 12px 0 0;
 }
 
-.modal-header h3 {
-  color: #2c3e50;
-  margin: 0;
-}
+.modal-header h3 { color: #2c3e50; margin: 0; }
 
 .close-btn {
   background: none;
@@ -243,9 +231,7 @@ function formatDateTime(dateTimeString) {
   transition: color 0.3s ease;
 }
 
-.close-btn:hover {
-  color: #2c3e50;
-}
+.close-btn:hover { color: #2c3e50; }
 
 .modal-content {
   padding: 20px 25px;
@@ -253,9 +239,7 @@ function formatDateTime(dateTimeString) {
   flex: 1;
 }
 
-.detail-section {
-  margin-bottom: 20px;
-}
+.detail-section { margin-bottom: 20px; }
 
 .detail-section.image-section {
   background: #f8f9fa;
@@ -271,9 +255,7 @@ function formatDateTime(dateTimeString) {
   font-size: 0.95rem;
 }
 
-.incident-image-container {
-  text-align: center;
-}
+.incident-image-container { text-align: center; }
 
 .incident-image {
   max-width: 100%;
@@ -284,9 +266,7 @@ function formatDateTime(dateTimeString) {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
-.incident-image:hover {
-  transform: scale(1.02);
-}
+.incident-image:hover { transform: scale(1.02); }
 
 .image-caption {
   margin-top: 10px;
@@ -320,27 +300,13 @@ function formatDateTime(dateTimeString) {
   color: #4a90e2;
 }
 
-.description-text {
-  color: #2c3e50;
-  line-height: 1.5;
-}
+.description-text { color: #2c3e50; line-height: 1.5; }
 
-.action-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
+.action-form { display: flex; flex-direction: column; gap: 12px; }
 
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
+.form-group { display: flex; flex-direction: column; gap: 6px; }
 
-.form-group label {
-  font-weight: 600;
-  color: #2c3e50;
-}
+.form-group label { font-weight: 600; color: #2c3e50; }
 
 .input-field,
 .textarea-field {
@@ -356,10 +322,7 @@ function formatDateTime(dateTimeString) {
   outline: none;
 }
 
-.textarea-field {
-  resize: vertical;
-  font-family: inherit;
-}
+.textarea-field { resize: vertical; font-family: inherit; }
 
 .action-btn {
   padding: 12px 20px;
@@ -371,23 +334,10 @@ function formatDateTime(dateTimeString) {
   transition: all 0.3s ease;
 }
 
-.action-btn.responding {
-  background: #f39c12;
-}
-
-.action-btn.responding:hover {
-  background: #e67e22;
-  transform: translateY(-2px);
-}
-
-.action-btn.resolved {
-  background: #27ae60;
-}
-
-.action-btn.resolved:hover {
-  background: #229954;
-  transform: translateY(-2px);
-}
+.action-btn.responding { background: #f39c12; }
+.action-btn.responding:hover { background: #e67e22; transform: translateY(-2px); }
+.action-btn.resolved { background: #27ae60; }
+.action-btn.resolved:hover { background: #229954; transform: translateY(-2px); }
 
 .resolved-message {
   text-align: center;
@@ -407,20 +357,9 @@ function formatDateTime(dateTimeString) {
   display: inline-block;
 }
 
-.status-badge.pending {
-  background: #fee;
-  color: #e74c3c;
-}
-
-.status-badge.responding {
-  background: #fff3cd;
-  color: #f39c12;
-}
-
-.status-badge.resolved {
-  background: #d4edda;
-  color: #27ae60;
-}
+.status-badge.pending { background: #fee; color: #e74c3c; }
+.status-badge.responding { background: #fff3cd; color: #f39c12; }
+.status-badge.resolved { background: #d4edda; color: #27ae60; }
 
 .weapon-badge {
   padding: 4px 12px;
@@ -430,18 +369,7 @@ function formatDateTime(dateTimeString) {
   display: inline-block;
 }
 
-.weapon-badge.knife {
-  background: #ffebf4;
-  color: #e73c8c;
-}
-
-.weapon-badge.pistol {
-  background: #e0e2ff;
-  color: #3638ca;
-}
-
-.weapon-badge.heavy_weapon {
-  background: #f3e5f5;
-  color: #9b59b6;
-}
+.weapon-badge.knife { background: #ffebf4; color: #e73c8c; }
+.weapon-badge.pistol { background: #e0e2ff; color: #3638ca; }
+.weapon-badge.heavy_weapon { background: #f3e5f5; color: #9b59b6; }
 </style>

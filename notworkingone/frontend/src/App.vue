@@ -242,6 +242,8 @@ function handleLogout() {
   }, 100)
 }
 
+import { parseUTC } from './services/dateUtils.js'   // add this import at the top
+ 
 function formatWeaponName(weaponType) {
   const names = {
     'gun': 'Pistol',
@@ -250,17 +252,14 @@ function formatWeaponName(weaponType) {
     'knife': 'Knife',
     'pistol': 'Pistol'
   }
-  return names[weaponType] || weaponType.replace('-', ' ').replace('_', ' ')
+  return names[weaponType] || weaponType.replace(/-|_/g, ' ')
 }
-
+ 
 function formatTime(timestamp) {
   if (!timestamp) return ''
-  try {
-    const date = new Date(timestamp)
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  } catch {
-    return ''
-  }
+  const d = parseUTC(timestamp)
+  if (!d || isNaN(d)) return ''
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 </script>
 

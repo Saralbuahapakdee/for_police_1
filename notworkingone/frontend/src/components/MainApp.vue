@@ -8,6 +8,9 @@
           <button @click="activeTab = 'incidents'" :class="{ active: activeTab === 'incidents' }" class="nav-tab">
             🚨 Incidents
           </button>
+          <button @click="activeTab = 'multicam'" :class="{ active: activeTab === 'multicam' }" class="nav-tab">
+            📺 Multi-Cam
+          </button>
           <button @click="activeTab = 'stream'" :class="{ active: activeTab === 'stream' }" class="nav-tab">
             📹 Live Stream
           </button>
@@ -38,14 +41,16 @@
     </div>
 
     <!-- Content Area -->
-    <div class="content-area">
-      <IncidentsTab v-if="activeTab === 'incidents'" :token="token" :user-data="userData" />
-      <StreamTab v-if="activeTab === 'stream'" :token="token" />
-      <LogsTab v-if="activeTab === 'logs'" :token="token" />
-      <DashboardTab v-if="activeTab === 'dashboard'" :token="token" />
-      <CamerasTab v-if="activeTab === 'cameras' && userData.role === 'admin'" :token="token" />
-      <OfficersTab v-if="activeTab === 'officers' && userData.role === 'admin'" :token="token" />
-      <ProfileTab v-if="activeTab === 'profile'" :token="token" :user-data="userData" />
+    <!-- Multi-Cam gets a dark bg, other tabs get the standard padding -->
+    <div :class="['content-area', { 'content-dark': activeTab === 'multicam' }]">
+      <IncidentsTab  v-if="activeTab === 'incidents'"                           :token="token" :user-data="userData" />
+      <MultiCamTab   v-if="activeTab === 'multicam'"                            :token="token" />
+      <StreamTab     v-if="activeTab === 'stream'"                              :token="token" />
+      <LogsTab       v-if="activeTab === 'logs'"                                :token="token" />
+      <DashboardTab  v-if="activeTab === 'dashboard'"                           :token="token" />
+      <CamerasTab    v-if="activeTab === 'cameras'  && userData.role === 'admin'" :token="token" />
+      <OfficersTab   v-if="activeTab === 'officers' && userData.role === 'admin'" :token="token" />
+      <ProfileTab    v-if="activeTab === 'profile'"                             :token="token" :user-data="userData" />
     </div>
   </div>
 </template>
@@ -53,12 +58,13 @@
 <script setup>
 import { ref } from 'vue'
 import IncidentsTab from '../tabs/IncidentsTab.vue'
-import StreamTab from '../tabs/StreamTab.vue'
-import LogsTab from '../tabs/LogsTab.vue'
+import MultiCamTab  from '../tabs/MultiCamTab.vue'
+import StreamTab    from '../tabs/StreamTab.vue'
+import LogsTab      from '../tabs/LogsTab.vue'
 import DashboardTab from '../tabs/DashboardTab.vue'
-import CamerasTab from '../tabs/CamerasTab.vue'
-import OfficersTab from '../tabs/OfficersTab.vue'
-import ProfileTab from '../tabs/ProfileTab.vue'
+import CamerasTab   from '../tabs/CamerasTab.vue'
+import OfficersTab  from '../tabs/OfficersTab.vue'
+import ProfileTab   from '../tabs/ProfileTab.vue'
 
 const props = defineProps({
   token: String,
@@ -70,10 +76,7 @@ defineEmits(['logout'])
 const activeTab = ref('incidents')
 
 function formatRole(role) {
-  const roles = {
-    'admin': 'Administrator',
-    'officer': 'Police Officer'
-  }
+  const roles = { 'admin': 'Administrator', 'officer': 'Police Officer' }
   return roles[role] || role
 }
 </script>
@@ -81,10 +84,7 @@ function formatRole(role) {
 <style scoped>
 .main-app {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  top: 0; left: 0; right: 0; bottom: 0;
   display: flex;
   flex-direction: column;
   background-color: #f0f2f5;
@@ -98,6 +98,7 @@ function formatRole(role) {
   background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   color: white;
+  flex-shrink: 0;
 }
 
 .nav-left {
@@ -194,50 +195,30 @@ function formatRole(role) {
   transform: translateY(-1px);
 }
 
+/* Standard content area */
 .content-area {
   flex: 1;
   overflow-y: auto;
   padding: 25px;
 }
 
+/* Dark mode for multi-cam — no padding, full bleed */
+.content-area.content-dark {
+  padding: 12px;
+  background: #0a0e17;
+}
+
 @media (max-width: 1200px) {
-  .nav-left {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 15px;
-  }
-  
-  .nav-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 15px;
-  }
-  
-  .user-info {
-    width: 100%;
-    justify-content: space-between;
-  }
+  .nav-left { flex-direction: column; align-items: flex-start; gap: 15px; }
+  .nav-header { flex-direction: column; align-items: flex-start; gap: 15px; }
+  .user-info { width: 100%; justify-content: space-between; }
 }
 
 @media (max-width: 768px) {
-  .content-area {
-    padding: 15px;
-  }
-  
-  .nav-tabs {
-    flex-wrap: wrap;
-    width: 100%;
-  }
-  
-  .nav-tab {
-    font-size: 0.85rem;
-    padding: 8px 12px;
-    flex: 1;
-    min-width: 100px;
-  }
-  
-  .app-title {
-    font-size: 1.1rem;
-  }
+  .content-area { padding: 15px; }
+  .content-area.content-dark { padding: 8px; }
+  .nav-tabs { flex-wrap: wrap; width: 100%; }
+  .nav-tab { font-size: 0.85rem; padding: 8px 12px; flex: 1; min-width: 90px; }
+  .app-title { font-size: 1.1rem; }
 }
 </style>
