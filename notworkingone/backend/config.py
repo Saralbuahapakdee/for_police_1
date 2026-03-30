@@ -40,8 +40,8 @@ RTSP_STREAMS = {
 # Default MQTT topics indexed by camera DB row position (1-based)
 # "#" means subscribe to all — camera_id in the payload is used to route
 DEFAULT_CAMERA_MQTT_TOPICS = {
-    1: "A1G3774HC",   # Main Entrance — listens to all topics (camera_id from payload)
-    2: "BG774LGG3",   # Testing Camera
+    1: "E/A1G3774HC",   # Main Entrance — listens to all topics (camera_id from payload)
+    2: "E/BG774LGG3",   # Testing Camera
     3: "",
     4: "",
 }

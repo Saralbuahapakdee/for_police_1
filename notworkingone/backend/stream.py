@@ -350,7 +350,7 @@ def start_mqtt_client():
             "nafbb59e.ala.asia-southeast1.emqxsl.com", 8883
         )
         mqtt_client.loop_start()
-        mqtt_client.subscribe("#", qos=0)
+        mqtt_client.subscribe("E/#", qos=0)
         print("✅ MQTT client connected — subscribed to all topics (#)")
     except Exception as e:
         print(f"❌ MQTT connect failed: {e}")
