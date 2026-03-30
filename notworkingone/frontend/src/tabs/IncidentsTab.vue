@@ -44,6 +44,7 @@
       @close="closeModal"
       @update-status="updateStatus"
       @view-image="openImageFullscreen"
+      @delete="deleteIncident"
     />
 
     <ImageModal
@@ -326,6 +327,29 @@ async function updateStatus(newStatus, actionData) {
     }
   } catch (error) {
     console.error('Could not update incident:', error)
+    alert('Network error. Please try again.')
+  }
+}
+
+async function deleteIncident(incidentId) {
+  try {
+    const res = await fetch(`/api/incidents/${incidentId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${props.token}`
+      }
+    })
+    
+    if (res.ok) {
+      await loadIncidents()
+      closeModal()
+      alert('Incident deleted successfully.')
+    } else {
+      const data = await res.json()
+      alert(data.error || 'Failed to delete incident')
+    }
+  } catch (error) {
+    console.error('Could not delete incident:', error)
     alert('Network error. Please try again.')
   }
 }

@@ -9,7 +9,7 @@ from models import (
     get_user_by_username, get_all_officers, create_user, delete_user, update_password, update_user_profile,
     log_detection, get_weapon_preferences, update_weapon_preferences, get_cameras_list,
     get_detection_logs, get_dashboard_data,
-    create_incident, get_incidents, get_incident_by_id, update_incident, get_incident_actions,
+    create_incident, get_incidents, get_incident_by_id, update_incident, get_incident_actions, delete_incident,
     # Camera management
     get_all_cameras, create_camera, update_camera, delete_camera, toggle_camera_status
 )
@@ -713,6 +713,27 @@ def create_incident_route():
         return {"message": "Incident created successfully", "incident_id": incident_id}, 201
     except Exception as e:
         print(f"Create incident error: {e}")
+        return {"error": "Internal server error"}, 500
+
+
+@incident_bp.delete("/incidents/<int:incident_id>")
+@token_required
+def delete_incident_route(incident_id):
+    try:
+        user_role = request.user.get('role')
+        if user_role != 'admin':
+            return {"error": "Unauthorized - Admin only"}, 403
+            
+        incident = get_incident_by_id(incident_id)
+        if not incident:
+            return {"error": "Incident not found"}, 404
+            
+        if delete_incident(incident_id):
+            return {"message": "Incident and associated image deleted successfully"}
+        else:
+            return {"error": "Failed to delete incident"}, 500
+    except Exception as e:
+        print(f"Delete incident error: {e}")
         return {"error": "Internal server error"}, 500
 
 

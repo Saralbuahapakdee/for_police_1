@@ -122,6 +122,12 @@
           <div v-else class="resolved-message">
             ✓ This incident has been resolved
           </div>
+          
+          <div v-if="isAdmin" style="margin-top: 15px;">
+            <button @click="handleDelete" class="action-btn delete-btn">
+              🗑️ Delete Incident
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -138,7 +144,7 @@ const props = defineProps({
   isAdmin: Boolean
 })
 
-const emit = defineEmits(['close', 'update-status', 'view-image'])
+const emit = defineEmits(['close', 'update-status', 'view-image', 'delete'])
 
 const actionData = ref({
   assigned_to: '',
@@ -163,6 +169,12 @@ function handleImageError(event) {
 
 function handleStatusUpdate(newStatus) {
   emit('update-status', newStatus, actionData.value)
+}
+
+function handleDelete() {
+  if (confirm(`Are you sure you want to completely delete incident ${props.incident.incident_number} and its evidence image?\n\nThis action cannot be undone.`)) {
+    emit('delete', props.incident.id)
+  }
 }
 
 function formatStatus(status) {
@@ -338,6 +350,8 @@ function formatWeaponName(weaponType) {
 .action-btn.responding:hover { background: #e67e22; transform: translateY(-2px); }
 .action-btn.resolved { background: #27ae60; }
 .action-btn.resolved:hover { background: #229954; transform: translateY(-2px); }
+.action-btn.delete-btn { background: #e74c3c; width: 100%; }
+.action-btn.delete-btn:hover { background: #c0392b; transform: translateY(-2px); }
 
 .resolved-message {
   text-align: center;

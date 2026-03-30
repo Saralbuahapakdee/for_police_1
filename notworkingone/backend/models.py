@@ -302,6 +302,41 @@ def get_incident_actions(incident_id):
         return cursor.fetchall()
 
 
+def delete_incident(incident_id):
+    """Delete an incident, its actions, and physical image. Unlinks from detection log."""
+    import os
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        
+        # 1. Get image path
+        cursor.execute('SELECT image_path FROM incidents WHERE id = ?', (incident_id,))
+        incident = cursor.fetchone()
+        
+        # 2. Delete physical image if it exists
+        if incident and incident['image_path']:
+            image_path = incident['image_path']
+            IMAGES_DIR = os.path.join(os.path.dirname(__file__), 'incident_images')
+            filepath = os.path.join(IMAGES_DIR, image_path)
+            if os.path.exists(filepath):
+                try:
+                    os.remove(filepath)
+                    print(f"🗑️ Deleted image file: {filepath}")
+                except Exception as e:
+                    print(f"⚠️ Failed to delete image file {filepath}: {e}")
+                    
+        # 3. Unlink from detection logs (so logs are kept, but unconnected)
+        cursor.execute('UPDATE detection_logs SET incident_id = NULL WHERE incident_id = ?', (incident_id,))
+        
+        # 4. Delete related incident actions
+        cursor.execute('DELETE FROM incident_actions WHERE incident_id = ?', (incident_id,))
+        
+        # 5. Delete the incident record
+        cursor.execute('DELETE FROM incidents WHERE id = ?', (incident_id,))
+        
+        conn.commit()
+        return cursor.rowcount > 0
+
+
 # ========== WEAPON PREFERENCES ==========
 
 def get_weapon_preferences(user_id):
