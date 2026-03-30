@@ -342,12 +342,12 @@ def start_mqtt_client():
     mqtt_client.on_message = on_message
     mqtt_client.tls_set(tls_version=mqtt.client.ssl.PROTOCOL_TLS)
     mqtt_client.username_pw_set(
-        "hivemq.webclient.1757927568300", "r$i.g1>23O5TMdLAcp:H"
+        "mqtt_user1", "user1_mqtt"
     )
 
     try:
         mqtt_client.connect(
-            "fd2249eedb6c43fdbf9e9d318ab38fe4.s1.eu.hivemq.cloud", 8883
+            "nafbb59e.ala.asia-southeast1.emqxsl.com", 8883
         )
         mqtt_client.loop_start()
         mqtt_client.subscribe("#", qos=0)
