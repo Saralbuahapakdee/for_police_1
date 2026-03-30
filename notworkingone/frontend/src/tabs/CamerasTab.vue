@@ -114,7 +114,6 @@
                   <div class="config-label">MQTT Topic</div>
                   <div v-if="camera.mqtt_topic" class="config-value">
                     <code>{{ camera.mqtt_topic }}</code>
-                    <span v-if="camera.mqtt_topic === '#'" class="wildcard-badge">wildcard — uses payload camera_id</span>
                   </div>
                   <div v-else class="config-empty">⚠️ Not configured — detections won't link to this camera</div>
                 </div>
@@ -192,16 +191,13 @@
 
             <div class="form-group">
               <label>MQTT Topic</label>
-              <input v-model="form.mqtt_topic" class="input-field" placeholder='e.g.  cam/entrance   or   #  (wildcard for all topics)' @input="clearMessages" />
+              <input v-model="form.mqtt_topic" class="input-field" placeholder='e.g. cam/entrance' @input="clearMessages" />
             </div>
 
             <div class="mqtt-examples">
               <div class="example-title">Click a pattern to use it:</div>
               <div class="examples-grid">
-                <div class="example-item" @click="form.mqtt_topic = '#'">
-                  <code>#</code>
-                  <span>Wildcard — all topics. Route by <code>camera_id</code> in the payload JSON</span>
-                </div>
+
                 <div class="example-item" @click="form.mqtt_topic = 'detection/camera/' + (form.camera_name || 'cam').toLowerCase().replace(/ /g,'_')">
                   <code>detection/camera/{{ (form.camera_name || 'cam').toLowerCase().replace(/ /g,'_') }}</code>
                   <span>Exact topic per camera (recommended)</span>
@@ -217,7 +213,6 @@
               <div class="payload-title">Expected MQTT payload format:</div>
               <pre class="payload-code">{
   "detected": true,
-  "camera_id": {{ editingCamera ? editingCamera.id : 1 }},
   "objects": {
     "pistol": {
       "confidences": [0.92],
@@ -226,8 +221,7 @@
   }
 }</pre>
               <div class="payload-note">
-                ℹ️ <code>camera_id</code> in payload is used when topic is <code>#</code>.
-                With an exact topic, the camera is identified by the topic alone and <code>camera_id</code> is ignored.
+                ℹ️ The camera is identified strictly by the MQTT topic. No camera ID mapping in the JSON payload is needed!
               </div>
             </div>
           </div>

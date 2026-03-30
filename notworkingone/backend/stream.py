@@ -23,9 +23,8 @@ latest_raw_frames = {}          # camera_id → numpy frame
 frame_locks       = {}          # camera_id → threading.Lock
 capture_threads   = {}          # camera_id → Thread
 
-# topic → camera_id  (built from DB; "#" wildcard handled separately)
+# topic → camera_id  (built from DB)
 _topic_to_camera  = {}
-_wildcard_cameras = []          # camera_ids that use "#"
 _config_lock      = threading.Lock()
 
 
@@ -49,12 +48,11 @@ def _load_camera_config():
 
 def reload_camera_config():
     """Re-read DB and rebuild topic→camera map + start any new capture threads."""
-    global _topic_to_camera, _wildcard_cameras
+    global _topic_to_camera
 
     rows = _load_camera_config()
 
     new_topic_map  = {}
-    new_wildcards  = []
     rtsp_map       = {}           # camera_id → rtsp_url
 
     for row in rows:
@@ -65,14 +63,11 @@ def reload_camera_config():
         if rtsp_url:
             rtsp_map[cam_id] = rtsp_url
 
-        if topic == "#":
-            new_wildcards.append(cam_id)
-        elif topic:
+        if topic:
             new_topic_map[topic] = cam_id
 
     with _config_lock:
         _topic_to_camera  = new_topic_map
-        _wildcard_cameras = new_wildcards
 
     # Start capture threads for cameras that have an RTSP URL
     for cam_id, rtsp_url in rtsp_map.items():
@@ -80,35 +75,19 @@ def reload_camera_config():
             _start_one_capture_thread(cam_id, rtsp_url)
 
     print(f"📡 Camera config loaded: {len(rows)} cameras | "
-          f"topics={list(new_topic_map.keys())} | wildcards={new_wildcards}")
+          f"topics={list(new_topic_map.keys())}")
 
 
-def _resolve_camera_id(mqtt_topic: str, payload_camera_id):
+def _resolve_camera_id(mqtt_topic: str):
     """
     Decide which camera_id an MQTT message belongs to.
-
-    Priority:
-      1. Exact topic match in _topic_to_camera
-      2. payload carries camera_id AND that camera uses '#' wildcard
-      3. payload carries camera_id (fallback, any camera)
-      4. First wildcard camera (last resort)
+    Strictly match the topic from the configuration map.
     """
     with _config_lock:
-        # 1. Exact topic match
         if mqtt_topic in _topic_to_camera:
             return _topic_to_camera[mqtt_topic]
 
-        payload_id = int(payload_camera_id) if payload_camera_id else None
-
-        # 2 & 3. Payload has camera_id
-        if payload_id is not None:
-            return payload_id
-
-        # 4. Fall back to first wildcard camera
-        if _wildcard_cameras:
-            return _wildcard_cameras[0]
-
-    return 1  # hard fallback
+    return None
 
 
 # ── RTSP capture threads ──────────────────────────────────────────────────────
@@ -199,8 +178,11 @@ def on_message(client, userdata, msg):
 
     try:
         parsed       = json.loads(msg.payload.decode("utf-8"))
-        payload_cam  = parsed.get("camera_id")
-        camera_id    = _resolve_camera_id(msg.topic, payload_cam)
+        camera_id    = _resolve_camera_id(msg.topic)
+
+        if camera_id is None:
+            print(f"⚠️  Ignoring message on topic '{msg.topic}' - no configured camera match.")
+            return
 
         print(f"\n{'='*50}")
         print(f"MQTT  topic={msg.topic}  →  camera_id={camera_id}")
@@ -276,17 +258,36 @@ def on_message(client, userdata, msg):
 
 # ── Video stream generator ────────────────────────────────────────────────────
 
-def get_latest_detection(camera_id=1):
+def get_latest_detection(camera_id=None):
     with detection_lock:
-        det = latest_detections.get(camera_id, {
-            "detected": False, "objects": {}, "timestamp": None, "latest_incident_id": None
-        })
-        return {
-            "detected":          det.get("detected"),
-            "objects":           det.get("objects"),
-            "timestamp":         det.get("timestamp"),
-            "latest_incident_id": det.get("latest_incident_id"),
-        }
+        if not latest_detections:
+            return {
+                "detected": False, "objects": {}, "timestamp": None, "latest_incident_id": None
+            }
+
+        if camera_id is not None:
+            det = latest_detections.get(camera_id, {})
+            return {
+                "detected":          det.get("detected", False),
+                "objects":           det.get("objects", {}),
+                "timestamp":         det.get("timestamp"),
+                "latest_incident_id": det.get("latest_incident_id"),
+            }
+        else:
+            # Find the globally most recent detection
+            valid_dets = [d for d in latest_detections.values() if d.get("timestamp")]
+            if valid_dets:
+                newest = max(valid_dets, key=lambda x: x["timestamp"])
+                return {
+                    "detected":          newest.get("detected", False),
+                    "objects":           newest.get("objects", {}),
+                    "timestamp":         newest.get("timestamp"),
+                    "latest_incident_id": newest.get("latest_incident_id"),
+                }
+            
+            return {
+                "detected": False, "objects": {}, "timestamp": None, "latest_incident_id": None
+            }
 
 
 def generate(camera_id=1):

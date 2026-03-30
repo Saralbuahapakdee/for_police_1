@@ -205,6 +205,12 @@ def init_db():
                       (cam_name, location, desc,
                        f'/api/video?camera={cam_name.lower().replace(" ", "_")}',
                        rtsp, mqtt_topic))
+        
+        # Also update if they were added before the migration but lacked rtsp_url or mqtt_topic
+        cursor.execute('''UPDATE cameras 
+                          SET rtsp_url = ?, mqtt_topic = ? 
+                          WHERE camera_name = ? AND (rtsp_url IS NULL OR mqtt_topic IS NULL)''',
+                      (rtsp, mqtt_topic, cam_name))
     
     conn.commit()
     conn.close()

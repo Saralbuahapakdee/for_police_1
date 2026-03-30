@@ -14,7 +14,7 @@ from models import (
     get_all_cameras, create_camera, update_camera, delete_camera, toggle_camera_status
 )
 from config import DEFAULT_WEAPONS
-from stream import generate, get_latest_detection
+from stream import generate, get_latest_detection, reload_camera_config
 
 # Create blueprints
 auth_bp = Blueprint('auth', __name__)
@@ -242,6 +242,7 @@ def admin_create_camera():
         
         camera_id, error = create_camera(data)
         if camera_id:
+            reload_camera_config()
             return {"message": "Camera created successfully", "camera_id": camera_id}, 201
         else:
             return {"error": error or "Failed to create camera"}, 409
@@ -264,6 +265,7 @@ def admin_update_camera(camera_id):
         
         success, error = update_camera(camera_id, data)
         if success:
+            reload_camera_config()
             return {"message": "Camera updated successfully"}
         else:
             return {"error": error or "Camera not found"}, 404
@@ -302,6 +304,7 @@ def admin_toggle_camera(camera_id):
         if new_status is None:
             return {"error": "Camera not found"}, 404
         
+        reload_camera_config()
         return {
             "message": f"Camera {'activated' if new_status else 'deactivated'} successfully",
             "is_active": new_status
