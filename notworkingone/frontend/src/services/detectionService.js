@@ -245,6 +245,27 @@ class DetectionService {
     }
   }
 
+  async deleteIncident(incidentId) {
+    if (!this.token) {
+      throw new Error('No authentication token available');
+    }
+    
+    const response = await fetch(`/api/incidents/${incidentId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to delete incident');
+    }
+    
+    return await response.json();
+  }
+
   notifyListeners() {
     const state = {
       currentDetection: this.currentDetection,

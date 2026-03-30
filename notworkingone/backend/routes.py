@@ -9,7 +9,7 @@ from models import (
     get_user_by_username, get_all_officers, create_user, delete_user, update_password, update_user_profile,
     log_detection, get_weapon_preferences, update_weapon_preferences, get_cameras_list,
     get_detection_logs, get_dashboard_data,
-    create_incident, get_incidents, get_incident_by_id, update_incident, get_incident_actions
+    create_incident, get_incidents, get_incident_by_id, update_incident, get_incident_actions, delete_incident
 )
 from config import DEFAULT_WEAPONS
 from stream import generate, get_latest_detection
@@ -655,6 +655,39 @@ def create_incident_route():
         return {"message": "Incident created successfully", "incident_id": incident_id}, 201
     except Exception as e:
         print(f"Create incident error: {e}")
+        return {"error": "Internal server error"}, 500
+
+
+@incident_bp.delete("/incidents/<int:incident_id>")
+@token_required
+def delete_incident_route(incident_id):
+    try:
+        if request.user.get('role') != 'admin':
+            return {"error": "Unauthorized - Admin only"}, 403
+            
+        incident = get_incident_by_id(incident_id)
+        if not incident:
+            return {"error": "Incident not found"}, 404
+            
+        success, images_to_delete = delete_incident(incident_id)
+        
+        if success:
+            # Delete physical image files
+            for img_path in images_to_delete:
+                if img_path:
+                    try:
+                        filepath = os.path.join(IMAGES_DIR, img_path)
+                        if os.path.exists(filepath):
+                            os.remove(filepath)
+                            print(f"🗑️ Deleted image file: {filepath}")
+                    except Exception as e:
+                        print(f"⚠️ Failed to delete image {img_path}: {e}")
+                        
+            return {"message": "Incident deleted successfully"}
+        else:
+            return {"error": "Failed to delete incident"}, 500
+    except Exception as e:
+        print(f"Delete incident error: {e}")
         return {"error": "Internal server error"}, 500
 
 

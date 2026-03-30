@@ -44,6 +44,7 @@
       @close="closeModal"
       @update-status="updateStatus"
       @view-image="openImageFullscreen"
+      @delete-incident="deleteIncident"
     />
 
     <ImageModal
@@ -62,6 +63,7 @@ import IncidentTable from './incidents/IncidentTable.vue'
 import IncidentCards from './incidents/IncidentCards.vue'
 import IncidentModal from './incidents/IncidentModal.vue'
 import ImageModal from './incidents/ImageModal.vue'
+import detectionService from '../services/detectionService.js'
 
 const props = defineProps({
   token: String,
@@ -327,6 +329,25 @@ async function updateStatus(newStatus, actionData) {
   } catch (error) {
     console.error('Could not update incident:', error)
     alert('Network error. Please try again.')
+  }
+}
+
+async function deleteIncident(incidentId) {
+  try {
+    // Explicitly set the token for detectionService if not handled elsewhere
+    if (!detectionService.token) {
+      detectionService.token = props.token
+    }
+    
+    await detectionService.deleteIncident(incidentId)
+    closeModal()
+    await loadIncidents()
+    
+    // Optional: show a quick success toast/alert
+    console.log(`Incident ${incidentId} deleted completely.`)
+  } catch (error) {
+    console.error('Failed to delete incident:', error)
+    alert(error.message || 'Failed to delete incident. Please try again.')
   }
 }
 </script>

@@ -323,6 +323,42 @@ def get_incident_actions(incident_id):
         return cursor.fetchall()
 
 
+def delete_incident(incident_id):
+    """Delete an incident, its actions, and return associated images to delete."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        
+        # 1. Gather image paths to physical delete
+        images_to_delete = []
+        
+        # From incident
+        cursor.execute('SELECT image_path FROM incidents WHERE id = ?', (incident_id,))
+        row = cursor.fetchone()
+        if row and row['image_path']:
+            images_to_delete.append(row['image_path'])
+            
+        # From related detection_logs (they use the same image usually, but just in case)
+        cursor.execute('SELECT image_path FROM detection_logs WHERE incident_id = ?', (incident_id,))
+        logs = cursor.fetchall()
+        for log in logs:
+            if log['image_path'] and log['image_path'] not in images_to_delete:
+                images_to_delete.append(log['image_path'])
+                
+        # 2. Update detection logs (KEEP logs, clear image and incident reference)
+        cursor.execute('UPDATE detection_logs SET incident_id = NULL, image_path = NULL WHERE incident_id = ?', (incident_id,))
+        
+        # 3. Delete incident_actions
+        cursor.execute('DELETE FROM incident_actions WHERE incident_id = ?', (incident_id,))
+        
+        # 4. Delete the incident
+        cursor.execute('DELETE FROM incidents WHERE id = ?', (incident_id,))
+        
+        deleted_count = cursor.rowcount
+        conn.commit()
+        
+        return deleted_count > 0, images_to_delete
+
+
 # ========== EXISTING FUNCTIONS ==========
 
 def get_weapon_preferences(user_id):

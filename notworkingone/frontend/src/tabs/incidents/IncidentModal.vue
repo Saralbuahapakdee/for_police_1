@@ -120,7 +120,10 @@
           </div>
           
           <div v-else class="resolved-message">
-            ✓ This incident has been resolved
+            <div style="margin-bottom: 15px;">✓ This incident has been resolved</div>
+            <button v-if="isAdmin" @click="handleDelete" class="action-btn delete-btn">
+              🗑️ Delete Incident
+            </button>
           </div>
         </div>
       </div>
@@ -137,7 +140,7 @@ const props = defineProps({
   isAdmin: Boolean
 })
 
-const emit = defineEmits(['close', 'update-status', 'view-image'])
+const emit = defineEmits(['close', 'update-status', 'view-image', 'delete-incident'])
 
 const actionData = ref({
   assigned_to: '',
@@ -162,6 +165,12 @@ function handleImageError(event) {
 
 function handleStatusUpdate(newStatus) {
   emit('update-status', newStatus, actionData.value)
+}
+
+function handleDelete() {
+  if (confirm(`Are you sure you want to permanently delete incident ${props.incident.incident_number}? This will also delete any associated images.`)) {
+    emit('delete-incident', props.incident.id)
+  }
 }
 
 function formatStatus(status) {
@@ -386,6 +395,20 @@ function formatDateTime(dateTimeString) {
 
 .action-btn.resolved:hover {
   background: #229954;
+  transform: translateY(-2px);
+}
+
+.action-btn.delete-btn {
+  background: #e74c3c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 auto; /* Center in the resolved-message block */
+}
+
+.action-btn.delete-btn:hover {
+  background: #c0392b;
   transform: translateY(-2px);
 }
 
