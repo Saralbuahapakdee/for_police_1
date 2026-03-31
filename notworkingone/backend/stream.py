@@ -28,6 +28,40 @@ _topic_to_camera  = {}
 _config_lock      = threading.Lock()
 
 
+# ── Weapon type normalisation ─────────────────────────────────────────────────
+
+_WEAPON_TYPE_MAP = {
+    # lowercase / underscored (canonical DB values)
+    'gun':          'pistol',
+    'pistol':       'pistol',
+    'knife':        'knife',
+    'heavy_weapon': 'heavy_weapon',
+    'heavy-weapon': 'heavy_weapon',
+    # Capitalised (new MQTT format: "Pistol", "Knife", "Heavy Weapon")
+    'Pistol':       'pistol',
+    'Gun':          'pistol',
+    'Knife':        'knife',
+    'Heavy Weapon': 'heavy_weapon',
+    'Heavy-Weapon': 'heavy_weapon',
+    'Heavy_Weapon': 'heavy_weapon',
+    # ALL-CAPS variants
+    'PISTOL':       'pistol',
+    'GUN':          'pistol',
+    'KNIFE':        'knife',
+    'HEAVY WEAPON': 'heavy_weapon',
+    'HEAVY-WEAPON': 'heavy_weapon',
+    'HEAVY_WEAPON': 'heavy_weapon',
+}
+
+def _normalize_weapon(weapon_type: str) -> str:
+    """Return the canonical DB weapon type for any incoming MQTT label."""
+    if weapon_type in _WEAPON_TYPE_MAP:
+        return _WEAPON_TYPE_MAP[weapon_type]
+    # Fallback: lowercase + replace spaces/hyphens with underscore
+    normalized = weapon_type.lower().replace(' ', '_').replace('-', '_')
+    return _WEAPON_TYPE_MAP.get(normalized, normalized)
+
+
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 def _load_camera_config():
@@ -189,9 +223,13 @@ def on_message(client, userdata, msg):
         print(f"Payload: {json.dumps(parsed, indent=2)}")
         print(f"{'='*50}\n")
 
-        # Normalise detection objects
+        # Normalise detection objects — keys from MQTT may be "Pistol", "Knife", "Heavy Weapon"
         processed_objects = {}
-        for weapon_type, data in parsed.get("objects", {}).items():
+        for raw_weapon_type, data in parsed.get("objects", {}).items():
+            weapon_type = _normalize_weapon(raw_weapon_type)   # ← normalise here
+            if raw_weapon_type != weapon_type:
+                print(f"  🔄 Normalised weapon type: '{raw_weapon_type}' → '{weapon_type}'")
+
             confs = data.get("confidences", [])
             if not isinstance(confs, list):
                 confs = [confs]
