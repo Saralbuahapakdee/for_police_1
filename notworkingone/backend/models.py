@@ -584,6 +584,13 @@ def create_camera(data):
     """Create a new camera (with rtsp_url and mqtt_topic)"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
+        
+        mqtt_topic = data.get('mqtt_topic', '').strip()
+        if mqtt_topic:
+            cursor.execute('SELECT id FROM cameras WHERE mqtt_topic = ?', (mqtt_topic,))
+            if cursor.fetchone():
+                return None, "MQTT topic is already in use by another camera"
+
         try:
             cursor.execute('''INSERT INTO cameras 
                             (camera_name, location, description, stream_url, rtsp_url, mqtt_topic, is_active) 
@@ -604,6 +611,13 @@ def update_camera(camera_id, data):
     """Update camera details (with rtsp_url and mqtt_topic)"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
+        
+        mqtt_topic = data.get('mqtt_topic', '').strip()
+        if mqtt_topic:
+            cursor.execute('SELECT id FROM cameras WHERE mqtt_topic = ? AND id != ?', (mqtt_topic, camera_id))
+            if cursor.fetchone():
+                return False, "MQTT topic is already in use by another camera"
+
         try:
             cursor.execute('''UPDATE cameras 
                              SET camera_name = ?, location = ?, description = ?, 
