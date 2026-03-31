@@ -29,17 +29,38 @@ IMAGES_DIR = os.path.join(os.path.dirname(__file__), 'incident_images')
 os.makedirs(IMAGES_DIR, exist_ok=True)
 
 # Weapon type mapping from MQTT to database format
+# Handles all casings: lowercase, capitalized, spaced, hyphenated
 WEAPON_TYPE_MAP = {
+    # lowercase
     'gun': 'pistol',
     'heavy-weapon': 'heavy_weapon',
+    'heavy_weapon': 'heavy_weapon',
     'knife': 'knife',
     'pistol': 'pistol',
-    'heavy_weapon': 'heavy_weapon'
+    # Capitalized (new MQTT format)
+    'Gun': 'pistol',
+    'Pistol': 'pistol',
+    'Knife': 'knife',
+    'Heavy Weapon': 'heavy_weapon',
+    'Heavy-Weapon': 'heavy_weapon',
+    'Heavy_Weapon': 'heavy_weapon',
+    # All-caps variants
+    'GUN': 'pistol',
+    'PISTOL': 'pistol',
+    'KNIFE': 'knife',
+    'HEAVY WEAPON': 'heavy_weapon',
+    'HEAVY-WEAPON': 'heavy_weapon',
+    'HEAVY_WEAPON': 'heavy_weapon',
 }
 
-def normalize_weapon_type(weapon_type):
-    """Normalize weapon type from MQTT to database format"""
-    return WEAPON_TYPE_MAP.get(weapon_type.lower(), weapon_type.lower())
+def normalize_weapon_type(weapon_type: str) -> str:
+    """Normalize weapon type from MQTT to database format (case-insensitive fallback)."""
+    # Try exact match first
+    if weapon_type in WEAPON_TYPE_MAP:
+        return WEAPON_TYPE_MAP[weapon_type]
+    # Fallback: lowercase + replace spaces/hyphens
+    normalized = weapon_type.lower().replace(' ', '_').replace('-', '_')
+    return WEAPON_TYPE_MAP.get(normalized, normalized)
 
 # ========== AUTH ROUTES ==========
 @auth_bp.post("/login")
@@ -377,7 +398,7 @@ def log_det():
             return {"error": "Missing weapon_type or camera_id"}, 400
         
         user_id = request.user.get('user_id')
-        weapon_type = data['weapon_type']
+        weapon_type = normalize_weapon_type(data['weapon_type'])  # normalize here too
         camera_id = data['camera_id']
         confidence_score = data.get('confidence_score', 0.85)
         image_data = data.get('image')
