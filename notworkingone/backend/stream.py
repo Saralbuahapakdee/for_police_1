@@ -112,7 +112,7 @@ def capture_loop(camera_id, rtsp_url):
         c = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
         if c.isOpened():
             c.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            c.set(cv2.CAP_PROP_FPS, 15)
+            c.set(cv2.CAP_PROP_FPS, 10)
             return c
         return None
 
@@ -134,7 +134,7 @@ def capture_loop(camera_id, rtsp_url):
             continue
 
         with frame_locks[camera_id]:
-            latest_raw_frames[camera_id] = frame.copy()
+            latest_raw_frames[camera_id] = frame
 
 
 def start_capture_threads():
@@ -220,31 +220,35 @@ def on_message(client, userdata, msg):
                     if latest_raw_frames.get(camera_id) is not None:
                         current_frame = latest_raw_frames[camera_id].copy()
 
-            for weapon_type, data in processed_objects.items():
-                confs          = data.get("confidences", [])
-                avg_confidence = sum(confs) / len(confs) if confs else 0.85
+            def process_and_log():
+                for weapon_type, data in processed_objects.items():
+                    confs          = data.get("confidences", [])
+                    avg_confidence = sum(confs) / len(confs) if confs else 0.85
 
-                image_bytes = None
-                if current_frame is not None:
-                    drawn = draw_boxes_on_frame(
-                        current_frame.copy(), {weapon_type: data}
-                    )
-                    ok, enc = cv2.imencode(
-                        ".jpg", drawn, [int(cv2.IMWRITE_JPEG_QUALITY), 80]
-                    )
-                    if ok:
-                        image_bytes = enc.tobytes()
+                    image_bytes = None
+                    if current_frame is not None:
+                        drawn = draw_boxes_on_frame(
+                            current_frame.copy(), {weapon_type: data}
+                        )
+                        ok, enc = cv2.imencode(
+                            ".jpg", drawn, [int(cv2.IMWRITE_JPEG_QUALITY), 80]
+                        )
+                        if ok:
+                            image_bytes = enc.tobytes()
 
-                result = process_system_detection(
-                    camera_id, weapon_type, avg_confidence, image_bytes
-                )
-                if result.get("is_new"):
-                    print(f"  → Logged detection #{result['detection_id']}")
-                    if result.get("incident_id"):
-                        with detection_lock:
-                            latest_detections.setdefault(camera_id, {})[
-                                "latest_incident_id"
-                            ] = result["incident_id"]
+                    result = process_system_detection(
+                        camera_id, weapon_type, avg_confidence, image_bytes
+                    )
+                    if result.get("is_new"):
+                        print(f"  → Logged detection #{result['detection_id']}")
+                        if result.get("incident_id"):
+                            with detection_lock:
+                                latest_detections.setdefault(camera_id, {})[
+                                    "latest_incident_id"
+                                ] = result["incident_id"]
+                                
+            # Offload disk IO/DB insertions to avoid blocking MQTT thread/stream delay 
+            threading.Thread(target=process_and_log, daemon=True).start()
         else:
             print("✓ No threats detected")
 
