@@ -5,7 +5,7 @@ from config import pwd_ctx, DEFAULT_WEAPONS
 
 
 def dict_from_row(row):
-    """Safely convert sqlite3.Row to dict with defaults for missing columns"""
+    
     if not row:
         return None
     
@@ -18,7 +18,7 @@ def dict_from_row(row):
 
 
 def get_user_by_username(username):
-    """Get user by username"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM users WHERE username = ?', (username,))
@@ -27,7 +27,7 @@ def get_user_by_username(username):
 
 
 def get_all_officers():
-    """Get all officers (for admin)"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''SELECT id, username, first_name, last_name, badge_number, 
@@ -36,7 +36,7 @@ def get_all_officers():
 
 
 def create_user(data):
-    """Create a new user (admin creates officers)"""
+    
     password_hash = pwd_ctx.hash(data['password'])
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -64,7 +64,7 @@ def create_user(data):
 
 
 def delete_user(username):
-    """Delete a user and all related data"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         user = get_user_by_username(username)
@@ -82,7 +82,7 @@ def delete_user(username):
 
 
 def update_password(username, new_password):
-    """Update user password"""
+    
     new_password_hash = pwd_ctx.hash(new_password)
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -93,7 +93,7 @@ def update_password(username, new_password):
 
 
 def update_user_profile(username, first_name, last_name, phone, badge_number, department):
-    """Update user profile information"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''UPDATE users 
@@ -106,7 +106,7 @@ def update_user_profile(username, first_name, last_name, phone, badge_number, de
 
 
 def log_detection(user_id, camera_id, weapon_type, confidence_score=0.85, image_path=None):
-    """Log a weapon detection with optional image path and update daily summary"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         now = datetime.now()
@@ -141,7 +141,7 @@ def log_detection(user_id, camera_id, weapon_type, confidence_score=0.85, image_
 
 
 def create_incident(camera_id, weapon_type, detection_id, created_by, location, description='', image_path=None):
-    """Create a new incident from detection with optional image"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
@@ -179,7 +179,7 @@ def create_incident(camera_id, weapon_type, detection_id, created_by, location, 
 
 
 def get_incidents(status=None, assigned_to=None, limit=100, officer_view=False):
-    """Get incidents with filters"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
@@ -217,7 +217,7 @@ def get_incidents(status=None, assigned_to=None, limit=100, officer_view=False):
 
 
 def get_incident_by_id(incident_id):
-    """Get incident details"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
@@ -236,7 +236,7 @@ def get_incident_by_id(incident_id):
 
 
 def update_incident(incident_id, user_id, updates):
-    """Update incident details"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
@@ -289,7 +289,7 @@ def update_incident(incident_id, user_id, updates):
 
 
 def get_incident_actions(incident_id):
-    """Get action history for incident"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
@@ -303,7 +303,7 @@ def get_incident_actions(incident_id):
 
 
 def delete_incident(incident_id):
-    """Delete an incident, its actions, and physical image. Unlinks from detection log."""
+    
     import os
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -340,7 +340,7 @@ def delete_incident(incident_id):
 
 
 def get_weapon_preferences(user_id):
-    """Get weapon preferences for user"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''SELECT weapon_type, is_enabled FROM weapon_preferences 
@@ -363,7 +363,7 @@ def get_weapon_preferences(user_id):
 
 
 def update_weapon_preferences(user_id, preferences):
-    """Update weapon preferences"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
@@ -385,7 +385,7 @@ def update_weapon_preferences(user_id, preferences):
 
 
 def get_cameras_list():
-    """Get all active cameras"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''SELECT id, camera_name, location, description, is_active 
@@ -394,7 +394,7 @@ def get_cameras_list():
 
 
 def get_detection_logs(camera_id=None, weapon_type=None, days=7, limit=100):
-    """Get detection logs with filters"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
@@ -425,7 +425,7 @@ def get_detection_logs(camera_id=None, weapon_type=None, days=7, limit=100):
 
 
 def get_dashboard_data(user_id, days=7, camera_id=None):
-    """Get dashboard data"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
@@ -494,7 +494,7 @@ import threading
 _detection_cooldown_lock = threading.Lock()
 
 def process_system_detection(camera_id, weapon_type, confidence_score, image_bytes=None):
-    """Process an automated system detection from the backend stream."""
+    
     from datetime import datetime, timedelta
     import os
     from config import SYSTEM_USER
@@ -572,7 +572,7 @@ def process_system_detection(camera_id, weapon_type, confidence_score, image_byt
 
 
 def get_all_cameras():
-    """Get all cameras (active and inactive) for admin management"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''SELECT id, camera_name, location, description, stream_url, rtsp_url, mqtt_topic, is_active, created_at 
@@ -581,7 +581,7 @@ def get_all_cameras():
 
 
 def create_camera(data):
-    """Create a new camera (with rtsp_url and mqtt_topic)"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
@@ -608,7 +608,7 @@ def create_camera(data):
 
 
 def update_camera(camera_id, data):
-    """Update camera details (with rtsp_url and mqtt_topic)"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         try:
@@ -630,7 +630,7 @@ def update_camera(camera_id, data):
 
 
 def delete_camera(camera_id):
-    """Delete a camera (only if no detections/incidents linked)"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('SELECT COUNT(*) as cnt FROM detection_logs WHERE camera_id = ?', (camera_id,))
@@ -651,7 +651,7 @@ def delete_camera(camera_id):
 
 
 def toggle_camera_status(camera_id):
-    """Toggle camera active/inactive status"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('SELECT is_active FROM cameras WHERE id = ?', (camera_id,))

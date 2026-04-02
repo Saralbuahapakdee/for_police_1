@@ -142,8 +142,6 @@ function startDetectionService() {
   })
   
   detectionService.startPolling(token.value)
-  
-  console.log('✅ Global detection service started')
 }
 
 function stopDetectionService() {
@@ -153,8 +151,6 @@ function stopDetectionService() {
   }
   
   detectionService.stopPolling()
-  
-  console.log('🛑 Global detection service stopped')
 }
 
 function dismissAlert() {
@@ -202,7 +198,6 @@ async function login() {
       loginData.value = { username: '', password: '' }
       
       appKey.value++
-      console.log('🔄 App key incremented to:', appKey.value)
       
       startDetectionService()
     } else {
@@ -217,8 +212,6 @@ async function login() {
 }
 
 function handleLogout() {
-  console.log('🔓 LOGOUT - Starting cleanup...')
-  
   stopDetectionService()
   detectionService.reset()
   
@@ -234,10 +227,7 @@ function handleLogout() {
   
   appKey.value++
   
-  console.log('✅ LOGOUT complete - all state cleared, app key:', appKey.value)
-  
   setTimeout(() => {
-    console.log('🔄 Reloading page to ensure clean state...')
     window.location.reload()
   }, 100)
 }

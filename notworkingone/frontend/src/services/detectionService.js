@@ -1,8 +1,3 @@
-
-
-
-
-
 class DetectionService {
   constructor() {
     this.listeners = []
@@ -38,12 +33,10 @@ class DetectionService {
     this.lastTimestamp = null
     this.lastIncidentId = null
     this.currentAlert = null
-    console.log('🔄 Detection service reset')
   }
 
   startPolling(token) {
     if (this.isPolling) {
-      console.log('⚠️ Detection service already polling')
       return
     }
 
@@ -57,8 +50,6 @@ class DetectionService {
     this.pollInterval = setInterval(() => {
       this.checkDetection()
     }, 1000)
-
-    console.log('🔍 Detection service started - polling every 1000ms')
   }
 
   stopPolling() {
@@ -67,7 +58,6 @@ class DetectionService {
       this.pollInterval = null
     }
     this.isPolling = false
-    console.log('🛑 Detection service stopped')
   }
 
   async checkDetection() {
@@ -90,8 +80,6 @@ class DetectionService {
           data.timestamp !== this.lastTimestamp
 
         if (isNewDetection) {
-          console.log('🚨 NEW DETECTION - UPDATING IMMEDIATELY:', data)
-
           this.lastTimestamp = data.timestamp
 
           this.detectionHistory.unshift({
@@ -109,7 +97,6 @@ class DetectionService {
 
           if (data.latest_incident_id && data.latest_incident_id !== this.lastIncidentId) {
             this.lastIncidentId = data.latest_incident_id;
-            console.log(`🚨 NEW INCIDENT ALERT #${data.latest_incident_id} detected from backend`)
             await this.fetchAndSetIncidentAlert(data.latest_incident_id)
           }
         }
@@ -147,7 +134,6 @@ class DetectionService {
           timestamp: Date.now()
         }
 
-        console.log('🔔 Alert REPLACED with new incident:', this.currentAlert)
         this.notifyListeners()
       }
     } catch (error) {
@@ -156,7 +142,6 @@ class DetectionService {
   }
 
   dismissAlert() {
-    console.log('❌ Alert dismissed')
     this.currentAlert = null
     this.notifyListeners()
   }

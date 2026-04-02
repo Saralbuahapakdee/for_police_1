@@ -1,11 +1,3 @@
-"""
-stream.py  –  RTSP capture + MQTT listener
-
-Key change: RTSP streams and MQTT-topic→camera_id mappings are loaded
-from the cameras table in the DB (so admin changes take effect on restart
-or via reload_camera_config()).
-"""
-
 import time
 import cv2
 import paho.mqtt.client as paho
@@ -54,7 +46,7 @@ _WEAPON_TYPE_MAP = {
 }
 
 def _normalize_weapon(weapon_type: str) -> str:
-    """Return the canonical DB weapon type for any incoming MQTT label."""
+    
     if weapon_type in _WEAPON_TYPE_MAP:
         return _WEAPON_TYPE_MAP[weapon_type]
     
@@ -65,7 +57,7 @@ def _normalize_weapon(weapon_type: str) -> str:
 
 
 def _load_camera_config():
-    """Read rtsp_url and mqtt_topic for every active camera from the DB."""
+    
     try:
         from database import get_db_connection
         with get_db_connection() as conn:
@@ -81,7 +73,7 @@ def _load_camera_config():
 
 
 def reload_camera_config():
-    """Re-read DB and rebuild topic→camera map + start any new capture threads."""
+    
     global _topic_to_camera
 
     rows = _load_camera_config()
@@ -113,10 +105,7 @@ def reload_camera_config():
 
 
 def _resolve_camera_id(mqtt_topic: str):
-    """
-    Decide which camera_id an MQTT message belongs to.
-    Strictly match the topic from the configuration map.
-    """
+    
     with _config_lock:
         if mqtt_topic in _topic_to_camera:
             return _topic_to_camera[mqtt_topic]
@@ -172,7 +161,7 @@ def capture_loop(camera_id, rtsp_url):
 
 
 def start_capture_threads():
-    """Called on startup – loads config from DB and starts threads."""
+    
     reload_camera_config()
 
 
@@ -203,11 +192,11 @@ def draw_boxes_on_frame(frame, detection_objects):
 
 
 
-def on_connect(client, userdata, flags, rc, properties=None):
+def on_connect(client, _userdata, flags, rc, properties=None):
     print(f"MQTT CONNACK rc={rc}")
 
 
-def on_message(client, userdata, msg):
+def on_message(client, _userdata, msg):
     from models import process_system_detection
 
     try:
@@ -333,7 +322,7 @@ def get_latest_detection(camera_id=None):
 
 
 def generate(camera_id=1):
-    """MJPEG stream generator for frontend."""
+    
     start_capture_threads()   
 
     while True:

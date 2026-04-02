@@ -5,7 +5,7 @@ from config import DATABASE, pwd_ctx, DEFAULT_ADMIN, SYSTEM_USER, DEFAULT_WEAPON
 
 @contextmanager
 def get_db_connection():
-    """Context manager for database connections"""
+    
     conn = sqlite3.connect(DATABASE, timeout=15.0)
     conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA journal_mode=WAL;')
@@ -19,7 +19,7 @@ def get_db_connection():
 
 
 def init_db():
-    """Initialize the SQLite database and create all necessary tables"""
+    
     conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     

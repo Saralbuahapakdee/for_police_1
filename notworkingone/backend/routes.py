@@ -4,7 +4,7 @@ import os
 import base64
 from datetime import datetime, timedelta
 from flask import Blueprint, request, Response
-from auth import create_token, verify_token, token_required, get_token_from_request, verify_password, hash_password
+from auth import create_token, verify_token, token_required, get_token_from_request, verify_password
 from models import (
     get_user_by_username, get_all_officers, create_user, delete_user, update_password, update_user_profile,
     log_detection, get_weapon_preferences, update_weapon_preferences, get_cameras_list,
@@ -54,7 +54,7 @@ WEAPON_TYPE_MAP = {
 }
 
 def normalize_weapon_type(weapon_type: str) -> str:
-    """Normalize weapon type from MQTT to database format (case-insensitive fallback)."""
+    
     
     if weapon_type in WEAPON_TYPE_MAP:
         return WEAPON_TYPE_MAP[weapon_type]
@@ -237,7 +237,7 @@ def delete_officer(username):
 @admin_bp.get("/admin/cameras")
 @token_required
 def admin_get_cameras():
-    """Get all cameras including inactive ones (admin only)"""
+    
     try:
         if request.user.get('role') != 'admin':
             return {"error": "Unauthorized - Admin only"}, 403
@@ -252,7 +252,7 @@ def admin_get_cameras():
 @admin_bp.post("/admin/cameras")
 @token_required
 def admin_create_camera():
-    """Create a new camera (admin only)"""
+    
     try:
         if request.user.get('role') != 'admin':
             return {"error": "Unauthorized - Admin only"}, 403
@@ -275,7 +275,7 @@ def admin_create_camera():
 @admin_bp.put("/admin/cameras/<int:camera_id>")
 @token_required
 def admin_update_camera(camera_id):
-    """Update camera details (admin only)"""
+    
     try:
         if request.user.get('role') != 'admin':
             return {"error": "Unauthorized - Admin only"}, 403
@@ -298,7 +298,7 @@ def admin_update_camera(camera_id):
 @admin_bp.delete("/admin/cameras/<int:camera_id>")
 @token_required
 def admin_delete_camera(camera_id):
-    """Delete a camera (admin only)"""
+    
     try:
         if request.user.get('role') != 'admin':
             return {"error": "Unauthorized - Admin only"}, 403
@@ -316,7 +316,7 @@ def admin_delete_camera(camera_id):
 @admin_bp.patch("/admin/cameras/<int:camera_id>/toggle")
 @token_required
 def admin_toggle_camera(camera_id):
-    """Toggle camera active/inactive status (admin only)"""
+    
     try:
         if request.user.get('role') != 'admin':
             return {"error": "Unauthorized - Admin only"}, 403
@@ -572,7 +572,7 @@ def get_logs():
 
 @detection_bp.get("/incident_images/<path:filename>")
 def serve_incident_image(filename):
-    """Serve incident images"""
+    
     try:
         clean_filename = filename.replace('incident_images/', '')
         filepath = os.path.join(IMAGES_DIR, clean_filename)
@@ -813,7 +813,7 @@ def video_stream():
 
 @detection_bp.get("/detection-status")
 def get_detection_status():
-    """Get current detection status from AI service - PUBLIC endpoint"""
+    
     try:
         return get_latest_detection()
     except Exception as e:
