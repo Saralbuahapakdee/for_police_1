@@ -205,11 +205,11 @@ const dateRangeType = ref('preset')
 const filterDays = ref(7)
 const isLoading = ref(false)
 
-// Sorting
+
 const sortColumn = ref('detection_date')
 const sortDirection = ref('desc')
 
-// Date range
+
 const today = new Date().toISOString().split('T')[0]
 const startDate = ref(getDateDaysAgo(7))
 const endDate = ref(today)

@@ -202,11 +202,11 @@ const today = new Date().toISOString().split('T')[0]
 const startDate = ref(getDateDaysAgo(7))
 const endDate = ref(today)
 
-// Time filter
+
 const startTime = ref('')
 const endTime = ref('')
 
-// Sorting
+
 const sortColumn = ref('detection_time')
 const sortDirection = ref('desc')
 
@@ -216,7 +216,7 @@ function getDateDaysAgo(days) {
   return date.toISOString().split('T')[0]
 }
 
-// Filter logs by time of day (compare in LOCAL time, which is what the user sees)
+
 const filteredLogs = computed(() => {
   if (!startTime.value && !endTime.value) {
     return logs.value
@@ -226,7 +226,7 @@ const filteredLogs = computed(() => {
     try {
       const d = parseUTC(log.detection_time)
       if (!d) return true
-      // Format as HH:MM in local time
+      
       const hh = String(d.getHours()).padStart(2, '0')
       const mm = String(d.getMinutes()).padStart(2, '0')
       const logTime = `${hh}:${mm}`
@@ -235,7 +235,7 @@ const filteredLogs = computed(() => {
         if (startTime.value <= endTime.value) {
           return logTime >= startTime.value && logTime <= endTime.value
         } else {
-          // Overnight range e.g. 22:00 – 06:00
+          
           return logTime >= startTime.value || logTime <= endTime.value
         }
       } else if (startTime.value) {
@@ -356,7 +356,7 @@ async function loadLogs() {
     if (filterCamera.value) url += `&camera_id=${filterCamera.value}`
     if (filterWeapon.value) url += `&weapon_type=${filterWeapon.value}`
     
-    // Add time filter parameters
+    
     if (startTime.value) url += `&start_time=${startTime.value}`
     if (endTime.value) url += `&end_time=${endTime.value}`
     
@@ -474,7 +474,7 @@ function getConfidenceClass(score) {
   min-width: 130px;
 }
 
-/* Time filter with label */
+
 .time-filter-group {
   display: flex;
   align-items: center;

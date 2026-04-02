@@ -135,7 +135,7 @@ const updateMessage = ref(null)
 const isUpdating = ref(false)
 const isExporting = ref(false)
 
-// Password change
+
 const showChangePassword = ref(false)
 const passwordData = ref({
   current: '',
@@ -217,13 +217,13 @@ async function exportData() {
     if (res.ok) {
       const data = await res.json()
       
-      // Create CSV content
+      
       let csvContent = 'Date,Camera,Location,Weapon Type,Total Detections,Average Confidence\n'
       data.daily_summary.forEach(item => {
         csvContent += `${item.detection_date},${item.camera_name || 'N/A'},${item.location || 'N/A'},${item.weapon_type},${item.total_detections},${item.avg_confidence}\n`
       })
       
-      // Download CSV
+      
       const blob = new Blob([csvContent], { type: 'text/csv' })
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -253,7 +253,7 @@ function closePasswordModal() {
 async function changePassword() {
   clearPasswordError()
   
-  // Validation
+  
   if (!passwordData.value.current || !passwordData.value.new || !passwordData.value.confirm) {
     passwordError.value = 'Please fill all fields'
     return
@@ -446,7 +446,7 @@ function formatDate(dateString) {
   cursor: not-allowed;
 }
 
-/* Modals */
+
 .modal-overlay {
   position: fixed;
   top: 0;

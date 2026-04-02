@@ -51,7 +51,7 @@ def create_user(data):
                            data.get('badge_number', ''), data.get('department', '')))
             user_id = cursor.lastrowid
             
-            # Create default weapon preferences
+            
             for weapon in DEFAULT_WEAPONS:
                 cursor.execute('''INSERT INTO weapon_preferences 
                                 (user_id, weapon_type, is_enabled) VALUES (?, ?, ?)''',
@@ -308,11 +308,11 @@ def delete_incident(incident_id):
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
-        # 1. Get image path
+        
         cursor.execute('SELECT image_path FROM incidents WHERE id = ?', (incident_id,))
         incident = cursor.fetchone()
         
-        # 2. Delete physical image if it exists
+        
         if incident and incident['image_path']:
             image_path = incident['image_path']
             IMAGES_DIR = os.path.join(os.path.dirname(__file__), 'incident_images')
@@ -324,20 +324,20 @@ def delete_incident(incident_id):
                 except Exception as e:
                     print(f"⚠️ Failed to delete image file {filepath}: {e}")
                     
-        # 3. Unlink from detection logs (so logs are kept, but unconnected)
+        
         cursor.execute('UPDATE detection_logs SET incident_id = NULL WHERE incident_id = ?', (incident_id,))
         
-        # 4. Delete related incident actions
+        
         cursor.execute('DELETE FROM incident_actions WHERE incident_id = ?', (incident_id,))
         
-        # 5. Delete the incident record
+        
         cursor.execute('DELETE FROM incidents WHERE id = ?', (incident_id,))
         
         conn.commit()
         return cursor.rowcount > 0
 
 
-# ========== WEAPON PREFERENCES ==========
+
 
 def get_weapon_preferences(user_id):
     """Get weapon preferences for user"""
@@ -569,7 +569,7 @@ def process_system_detection(camera_id, weapon_type, confidence_score, image_byt
         return {"detection_id": detection_id, "incident_id": incident_id, "image_path": image_path, "is_new": True}
 
 
-# ========== CAMERA MANAGEMENT FUNCTIONS ==========
+
 
 def get_all_cameras():
     """Get all cameras (active and inactive) for admin management"""

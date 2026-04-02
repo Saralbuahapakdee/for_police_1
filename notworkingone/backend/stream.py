@@ -14,37 +14,37 @@ import json
 import threading
 from datetime import datetime
 
-# ── In-memory state ──────────────────────────────────────────────────────────
-latest_detections = {}          # camera_id → detection dict
+
+latest_detections = {}          
 detection_lock    = threading.Lock()
 mqtt_client       = None
 
-latest_raw_frames = {}          # camera_id → numpy frame
-frame_locks       = {}          # camera_id → threading.Lock
-capture_threads   = {}          # camera_id → Thread
+latest_raw_frames = {}          
+frame_locks       = {}          
+capture_threads   = {}          
 
-# topic → camera_id  (built from DB)
+
 _topic_to_camera  = {}
 _config_lock      = threading.Lock()
 
 
-# ── Weapon type normalisation ─────────────────────────────────────────────────
+
 
 _WEAPON_TYPE_MAP = {
-    # lowercase / underscored (canonical DB values)
+    
     'gun':          'pistol',
     'pistol':       'pistol',
     'knife':        'knife',
     'heavy_weapon': 'heavy_weapon',
     'heavy-weapon': 'heavy_weapon',
-    # Capitalised (new MQTT format: "Pistol", "Knife", "Heavy Weapon")
+    
     'Pistol':       'pistol',
     'Gun':          'pistol',
     'Knife':        'knife',
     'Heavy Weapon': 'heavy_weapon',
     'Heavy-Weapon': 'heavy_weapon',
     'Heavy_Weapon': 'heavy_weapon',
-    # ALL-CAPS variants
+    
     'PISTOL':       'pistol',
     'GUN':          'pistol',
     'KNIFE':        'knife',
@@ -57,12 +57,12 @@ def _normalize_weapon(weapon_type: str) -> str:
     """Return the canonical DB weapon type for any incoming MQTT label."""
     if weapon_type in _WEAPON_TYPE_MAP:
         return _WEAPON_TYPE_MAP[weapon_type]
-    # Fallback: lowercase + replace spaces/hyphens with underscore
+    
     normalized = weapon_type.lower().replace(' ', '_').replace('-', '_')
     return _WEAPON_TYPE_MAP.get(normalized, normalized)
 
 
-# ── DB helpers ────────────────────────────────────────────────────────────────
+
 
 def _load_camera_config():
     """Read rtsp_url and mqtt_topic for every active camera from the DB."""
@@ -87,7 +87,7 @@ def reload_camera_config():
     rows = _load_camera_config()
 
     new_topic_map  = {}
-    rtsp_map       = {}           # camera_id → rtsp_url
+    rtsp_map       = {}           
 
     for row in rows:
         cam_id    = row["id"]
@@ -103,7 +103,7 @@ def reload_camera_config():
     with _config_lock:
         _topic_to_camera  = new_topic_map
 
-    # Start capture threads for cameras that have an RTSP URL
+    
     for cam_id, rtsp_url in rtsp_map.items():
         if cam_id not in capture_threads or not capture_threads[cam_id].is_alive():
             _start_one_capture_thread(cam_id, rtsp_url)
@@ -124,7 +124,7 @@ def _resolve_camera_id(mqtt_topic: str):
     return None
 
 
-# ── RTSP capture threads ──────────────────────────────────────────────────────
+
 
 def _start_one_capture_thread(camera_id, rtsp_url):
     if camera_id not in frame_locks:
@@ -176,7 +176,7 @@ def start_capture_threads():
     reload_camera_config()
 
 
-# ── Drawing helpers ───────────────────────────────────────────────────────────
+
 
 def draw_boxes_on_frame(frame, detection_objects):
     for weapon_type, data in detection_objects.items():
@@ -201,7 +201,7 @@ def draw_boxes_on_frame(frame, detection_objects):
     return frame
 
 
-# ── MQTT callbacks ────────────────────────────────────────────────────────────
+
 
 def on_connect(client, userdata, flags, rc, properties=None):
     print(f"MQTT CONNACK rc={rc}")
@@ -223,10 +223,10 @@ def on_message(client, userdata, msg):
         print(f"Payload: {json.dumps(parsed, indent=2)}")
         print(f"{'='*50}\n")
 
-        # Normalise detection objects — keys from MQTT may be "Pistol", "Knife", "Heavy Weapon"
+        
         processed_objects = {}
         for raw_weapon_type, data in parsed.get("objects", {}).items():
-            weapon_type = _normalize_weapon(raw_weapon_type)   # ← normalise here
+            weapon_type = _normalize_weapon(raw_weapon_type)   
             if raw_weapon_type != weapon_type:
                 print(f"  🔄 Normalised weapon type: '{raw_weapon_type}' → '{weapon_type}'")
 
@@ -239,7 +239,7 @@ def on_message(client, userdata, msg):
                 "boxes":       data.get("boxes", []),
             }
 
-        # Update latest detection (thread-safe)
+        
         with detection_lock:
             if camera_id not in latest_detections:
                 latest_detections[camera_id] = {}
@@ -247,11 +247,11 @@ def on_message(client, userdata, msg):
             latest_detections[camera_id]["objects"]   = processed_objects
             latest_detections[camera_id]["timestamp"] = datetime.now().isoformat()
 
-        # Log detections to DB
+        
         if parsed.get("detected") and processed_objects:
             print(f"🚨 WEAPON DETECTED on camera {camera_id}!")
 
-            # Grab latest frame
+            
             current_frame = None
             if camera_id in frame_locks:
                 with frame_locks[camera_id]:
@@ -285,7 +285,7 @@ def on_message(client, userdata, msg):
                                     "latest_incident_id"
                                 ] = result["incident_id"]
                                 
-            # Offload disk IO/DB insertions to avoid blocking MQTT thread/stream delay 
+            
             threading.Thread(target=process_and_log, daemon=True).start()
         else:
             print("✓ No threats detected")
@@ -298,7 +298,7 @@ def on_message(client, userdata, msg):
         traceback.print_exc()
 
 
-# ── Video stream generator ────────────────────────────────────────────────────
+
 
 def get_latest_detection(camera_id=None):
     with detection_lock:
@@ -316,7 +316,7 @@ def get_latest_detection(camera_id=None):
                 "latest_incident_id": det.get("latest_incident_id"),
             }
         else:
-            # Find the globally most recent detection
+            
             valid_dets = [d for d in latest_detections.values() if d.get("timestamp")]
             if valid_dets:
                 newest = max(valid_dets, key=lambda x: x["timestamp"])
@@ -334,7 +334,7 @@ def get_latest_detection(camera_id=None):
 
 def generate(camera_id=1):
     """MJPEG stream generator for frontend."""
-    start_capture_threads()   # ensure threads are running
+    start_capture_threads()   
 
     while True:
         frame_copy = None
@@ -365,15 +365,15 @@ def generate(camera_id=1):
             + encoded.tobytes()
             + b"\r\n"
         )
-        time.sleep(0.06)   # ~15 fps
+        time.sleep(0.06)   
 
 
-# ── MQTT client startup ───────────────────────────────────────────────────────
+
 
 def start_mqtt_client():
     global mqtt_client
 
-    # Always load camera config (starts RTSP threads too)
+    
     start_capture_threads()
 
     if mqtt_client is not None:

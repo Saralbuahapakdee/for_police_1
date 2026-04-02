@@ -242,7 +242,7 @@ function handleLogout() {
   }, 100)
 }
 
-import { parseUTC } from './services/dateUtils.js'   // add this import at the top
+import { parseUTC } from './services/dateUtils.js'   
  
 function formatWeaponName(weaponType) {
   const names = {
@@ -284,7 +284,7 @@ body {
   bottom: 0;
 }
 
-/* Hidden video stream for image capture */
+
 .hidden-video-stream {
   position: fixed;
   top: -9999px;
@@ -412,7 +412,7 @@ body {
   font-weight: 600;
 }
 
-/* Incident Alert Banner Styles */
+
 .incident-alert-banner {
   position: fixed;
   bottom: 20px;

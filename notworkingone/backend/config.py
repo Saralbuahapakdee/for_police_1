@@ -1,16 +1,16 @@
 import os
 from passlib.context import CryptContext
 
-# Configuration
+
 SECRET_KEY = os.getenv("SECRET_KEY", "CHANGE_ME_SECRET")
 JWT_ALGO = "HS256"
-JWT_EXPIRATION = 3600  # 1 hour
+JWT_EXPIRATION = 3600  
 DATABASE = "users.db"
 
-# Password context for hashing
+
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Default data
+
 DEFAULT_ADMIN = {
     "username": "admin",
     "password": "SecureAdmin@2024!",
@@ -31,17 +31,16 @@ SYSTEM_USER = {
 
 DEFAULT_WEAPONS = ['knife', 'pistol', 'heavy_weapon']
 
-# Default RTSP streams indexed by camera DB row position (1-based)
+
 RTSP_STREAMS = {
     1: "rtsp://admin2:459OOPpr0j3ctzaCE61@161.246.5.20:554/cam/realmonitor?channel=1&subtype=1",
     2: "rtsp://fuGk55rSwiDtVigRfxPRkVlyiJPGmDZW:ZqniBPd7ILatymFgJcK9W@test.rtsp.stream/people"
 }
 
-# Default MQTT topics indexed by camera DB row position (1-based)
-# "#" means subscribe to all — camera_id in the payload is used to route
+
 DEFAULT_CAMERA_MQTT_TOPICS = {
-    1: "A1G3774HC",   # Main Entrance — listens to all topics (camera_id from payload)
-    2: "BG774LGG3",   # Testing Camera
+    1: "A1G3774HC",   
+    2: "BG774LGG3",   
     3: "",
     4: "",
 }

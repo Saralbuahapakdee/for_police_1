@@ -1,7 +1,7 @@
-// OPTIMIZED for INSTANT bounding box updates when MQTT arrives
-// Polling interval reduced to 500ms for near real-time response
-// UPDATED: 1-minute cooldown for detection logging
-// FIX: Cooldown set BEFORE async request to prevent duplicate logs from 40ms polling loop
+
+
+
+
 
 class DetectionService {
   constructor() {
@@ -19,7 +19,7 @@ class DetectionService {
     this.token = null
     this.lastTimestamp = null
     this.lastIncidentId = null
-    
+
     this.currentAlert = null
   }
 
@@ -46,18 +46,18 @@ class DetectionService {
       console.log('⚠️ Detection service already polling')
       return
     }
-    
+
     this.isPolling = true
     this.token = token
-    
-    // Check immediately on start
+
+
     this.checkDetection()
-    
-    // Poll every 1000ms for updates
+
+
     this.pollInterval = setInterval(() => {
       this.checkDetection()
     }, 1000)
-    
+
     console.log('🔍 Detection service started - polling every 1000ms')
   }
 
@@ -78,43 +78,43 @@ class DetectionService {
           'Content-Type': 'application/json'
         }
       })
-      
+
       if (response.ok) {
         const data = await response.json()
         this.isConnected = true
         this.lastCheckTime = new Date().toLocaleTimeString()
-        
+
         const hasObjects = data.objects && Object.keys(data.objects).length > 0
-        const isNewDetection = data.detected && hasObjects && 
-                               data.timestamp && 
-                               data.timestamp !== this.lastTimestamp
-        
+        const isNewDetection = data.detected && hasObjects &&
+          data.timestamp &&
+          data.timestamp !== this.lastTimestamp
+
         if (isNewDetection) {
           console.log('🚨 NEW DETECTION - UPDATING IMMEDIATELY:', data)
-          
+
           this.lastTimestamp = data.timestamp
-          
+
           this.detectionHistory.unshift({
             detected: data.detected,
             objects: data.objects,
             timestamp: data.timestamp
           })
-          
+
           if (this.detectionHistory.length > 50) {
             this.detectionHistory = this.detectionHistory.slice(0, 50)
           }
-          
+
           this.playAlertSound()
           this.showNotification(data)
-          
+
           if (data.latest_incident_id && data.latest_incident_id !== this.lastIncidentId) {
             this.lastIncidentId = data.latest_incident_id;
             console.log(`🚨 NEW INCIDENT ALERT #${data.latest_incident_id} detected from backend`)
             await this.fetchAndSetIncidentAlert(data.latest_incident_id)
           }
         }
-        
-        // Update current detection state (this triggers bounding box redraw)
+
+
         this.currentDetection = data
         this.notifyListeners()
       } else {
@@ -137,16 +137,16 @@ class DetectionService {
           'Authorization': `Bearer ${this.token}`
         }
       })
-      
+
       if (response.ok) {
         const data = await response.json()
-        
+
         this.currentAlert = {
           id: incidentId,
           incident: data.incident,
           timestamp: Date.now()
         }
-        
+
         console.log('🔔 Alert REPLACED with new incident:', this.currentAlert)
         this.notifyListeners()
       }
@@ -175,7 +175,7 @@ class DetectionService {
   playAlertSound() {
     try {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)()
-      
+
       this.playBeep(audioContext, 880, 0.2, 0)
     } catch (error) {
       console.error('Could not play alert sound:', error)
@@ -186,16 +186,16 @@ class DetectionService {
     setTimeout(() => {
       const oscillator = audioContext.createOscillator()
       const gainNode = audioContext.createGain()
-      
+
       oscillator.connect(gainNode)
       gainNode.connect(audioContext.destination)
-      
+
       oscillator.frequency.value = frequency
       oscillator.type = 'sine'
-      
+
       gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
       gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration)
-      
+
       oscillator.start(audioContext.currentTime)
       oscillator.stop(audioContext.currentTime + duration)
     }, delay * 1000)
@@ -206,7 +206,7 @@ class DetectionService {
       const weaponList = Object.keys(detection.objects)
         .map(w => this.formatWeaponName(w))
         .join(', ')
-      
+
       new Notification('🚨 Weapon Detected!', {
         body: `${weaponList} detected at ${new Date().toLocaleTimeString()}`,
         icon: '/favicon.ico',
@@ -231,7 +231,7 @@ class DetectionService {
 
   subscribe(callback) {
     this.listeners.push(callback)
-    
+
     callback({
       currentDetection: this.currentDetection,
       detectionHistory: this.detectionHistory,
@@ -239,7 +239,7 @@ class DetectionService {
       isConnected: this.isConnected,
       currentAlert: this.currentAlert
     })
-    
+
     return () => {
       this.listeners = this.listeners.filter(cb => cb !== callback)
     }
@@ -253,7 +253,7 @@ class DetectionService {
       isConnected: this.isConnected,
       currentAlert: this.currentAlert
     }
-    
+
     this.listeners.forEach(callback => {
       try {
         callback(state)

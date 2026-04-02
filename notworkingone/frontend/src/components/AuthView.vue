@@ -194,7 +194,7 @@ async function login() {
 async function register() {
   clearMessages()
   
-  // Validation
+  
   if (!registerData.value.username || !registerData.value.password || !registerData.value.email) {
     errorMessage.value = 'Please fill all required fields (*)'
     return
@@ -235,7 +235,7 @@ async function register() {
       successMessage.value = 'Account created successfully! Please log in.'
       isRegisterMode.value = false
       
-      // Clear form
+      
       registerData.value = {
         username: '', password: '', confirm_password: '', email: '',
         first_name: '', last_name: '', phone: '', role: 'guard', department: ''

@@ -239,7 +239,7 @@ function getDateDaysAgo(days) {
   min-width: 140px;
 }
 
-/* Time filter with label */
+
 .time-filter-group {
   display: flex;
   align-items: center;

@@ -23,7 +23,7 @@ def init_db():
     conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     
-    # Create users table
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,7 +42,7 @@ def init_db():
         )
     ''')
     
-    # Create cameras table - now with mqtt_topic and rtsp_url
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS cameras (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,7 +57,7 @@ def init_db():
         )
     ''')
     
-    # Create weapon_preferences table
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS weapon_preferences (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,7 +70,7 @@ def init_db():
         )
     ''')
     
-    # Create detection_logs table
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS detection_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,7 +88,7 @@ def init_db():
         )
     ''')
     
-    # Create incidents table
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS incidents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -119,7 +119,7 @@ def init_db():
         )
     ''')
     
-    # Create incident_actions table
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS incident_actions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -133,7 +133,7 @@ def init_db():
         )
     ''')
     
-    # Create daily_summary table
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS daily_summary (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,7 +151,7 @@ def init_db():
         )
     ''')
     
-    # ── Migrations: add new columns to existing tables ──────────────────────
+    
     migrations = [
         ("detection_logs", "image_path",  "ALTER TABLE detection_logs ADD COLUMN image_path TEXT"),
         ("incidents",      "image_path",  "ALTER TABLE incidents ADD COLUMN image_path TEXT"),
@@ -168,7 +168,7 @@ def init_db():
         except Exception as e:
             print(f"Note (migration): {e}")
 
-    # ── Default admin user ───────────────────────────────────────────────────
+    
     cursor.execute('SELECT username FROM users WHERE username = ?', (DEFAULT_ADMIN['username'],))
     if not cursor.fetchone():
         admin_password_hash = pwd_ctx.hash(DEFAULT_ADMIN['password'])
@@ -183,7 +183,7 @@ def init_db():
                             (user_id, weapon_type, is_enabled) VALUES (?, ?, ?)''',
                           (admin_user_id, weapon, True))
     
-    # ── Default system user ──────────────────────────────────────────────────
+    
     cursor.execute('SELECT username FROM users WHERE username = ?', (SYSTEM_USER['username'],))
     if not cursor.fetchone():
         system_password_hash = pwd_ctx.hash(SYSTEM_USER['password'])
@@ -198,7 +198,7 @@ def init_db():
                             (user_id, weapon_type, is_enabled) VALUES (?, ?, ?)''',
                           (system_user_id, weapon, True))
     
-    # ── Default cameras (with RTSP + MQTT from config) ───────────────────────
+    
     from config import RTSP_STREAMS, DEFAULT_CAMERA_MQTT_TOPICS
     for idx, (cam_name, location, desc) in enumerate(DEFAULT_CAMERAS, start=1):
         rtsp = RTSP_STREAMS.get(idx, '')
@@ -210,7 +210,7 @@ def init_db():
                        f'/api/video?camera={cam_name.lower().replace(" ", "_")}',
                        rtsp, mqtt_topic))
         
-        # Also update if they were added before the migration but lacked rtsp_url or mqtt_topic
+        
         cursor.execute('''UPDATE cameras 
                           SET rtsp_url = ?, mqtt_topic = ? 
                           WHERE camera_name = ? AND (rtsp_url IS NULL OR mqtt_topic IS NULL)''',

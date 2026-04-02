@@ -10,13 +10,13 @@ from models import (
     log_detection, get_weapon_preferences, update_weapon_preferences, get_cameras_list,
     get_detection_logs, get_dashboard_data,
     create_incident, get_incidents, get_incident_by_id, update_incident, get_incident_actions, delete_incident,
-    # Camera management
+    
     get_all_cameras, create_camera, update_camera, delete_camera, toggle_camera_status
 )
 from config import DEFAULT_WEAPONS
 from stream import generate, get_latest_detection, reload_camera_config
 
-# Create blueprints
+
 auth_bp = Blueprint('auth', __name__)
 camera_bp = Blueprint('camera', __name__)
 detection_bp = Blueprint('detection', __name__)
@@ -24,27 +24,27 @@ dashboard_bp = Blueprint('dashboard', __name__)
 incident_bp = Blueprint('incident', __name__)
 admin_bp = Blueprint('admin', __name__)
 
-# Create images directory if it doesn't exist
+
 IMAGES_DIR = os.path.join(os.path.dirname(__file__), 'incident_images')
 os.makedirs(IMAGES_DIR, exist_ok=True)
 
-# Weapon type mapping from MQTT to database format
-# Handles all casings: lowercase, capitalized, spaced, hyphenated
+
+
 WEAPON_TYPE_MAP = {
-    # lowercase
+    
     'gun': 'pistol',
     'heavy-weapon': 'heavy_weapon',
     'heavy_weapon': 'heavy_weapon',
     'knife': 'knife',
     'pistol': 'pistol',
-    # Capitalized (new MQTT format)
+    
     'Gun': 'pistol',
     'Pistol': 'pistol',
     'Knife': 'knife',
     'Heavy Weapon': 'heavy_weapon',
     'Heavy-Weapon': 'heavy_weapon',
     'Heavy_Weapon': 'heavy_weapon',
-    # All-caps variants
+    
     'GUN': 'pistol',
     'PISTOL': 'pistol',
     'KNIFE': 'knife',
@@ -55,14 +55,14 @@ WEAPON_TYPE_MAP = {
 
 def normalize_weapon_type(weapon_type: str) -> str:
     """Normalize weapon type from MQTT to database format (case-insensitive fallback)."""
-    # Try exact match first
+    
     if weapon_type in WEAPON_TYPE_MAP:
         return WEAPON_TYPE_MAP[weapon_type]
-    # Fallback: lowercase + replace spaces/hyphens
+    
     normalized = weapon_type.lower().replace(' ', '_').replace('-', '_')
     return WEAPON_TYPE_MAP.get(normalized, normalized)
 
-# ========== AUTH ROUTES ==========
+
 @auth_bp.post("/login")
 def login():
     try:
@@ -169,7 +169,7 @@ def update_profile():
         return {"error": "Internal server error"}, 500
 
 
-# ========== ADMIN ROUTES ==========
+
 @admin_bp.get("/officers")
 @token_required
 def get_officers():
@@ -232,7 +232,7 @@ def delete_officer(username):
         return {"error": "Internal server error"}, 500
 
 
-# ========== CAMERA MANAGEMENT ROUTES (Admin only) ==========
+
 
 @admin_bp.get("/admin/cameras")
 @token_required
@@ -335,7 +335,7 @@ def admin_toggle_camera(camera_id):
         return {"error": "Internal server error"}, 500
 
 
-# ========== CAMERA ROUTES ==========
+
 @camera_bp.get("/cameras")
 def cameras():
     try:
@@ -346,7 +346,7 @@ def cameras():
         return {"error": "Internal server error"}, 500
 
 
-# ========== WEAPON PREFERENCES ROUTES ==========
+
 @detection_bp.get("/weapon-preferences")
 @token_required
 def get_prefs():
@@ -388,7 +388,7 @@ def set_prefs():
         return {"error": "Internal server error"}, 500
 
 
-# ========== DETECTION ROUTES ==========
+
 @detection_bp.post("/log-detection")
 @token_required
 def log_det():
@@ -398,7 +398,7 @@ def log_det():
             return {"error": "Missing weapon_type or camera_id"}, 400
         
         user_id = request.user.get('user_id')
-        weapon_type = normalize_weapon_type(data['weapon_type'])  # normalize here too
+        weapon_type = normalize_weapon_type(data['weapon_type'])  
         camera_id = data['camera_id']
         confidence_score = data.get('confidence_score', 0.85)
         image_data = data.get('image')
@@ -569,7 +569,7 @@ def get_logs():
         return {"error": "Internal server error"}, 500
 
 
-# ========== IMAGE SERVING ROUTE ==========
+
 @detection_bp.get("/incident_images/<path:filename>")
 def serve_incident_image(filename):
     """Serve incident images"""
@@ -588,7 +588,7 @@ def serve_incident_image(filename):
         return {"error": "Internal server error"}, 500
 
 
-# ========== DASHBOARD ROUTES ==========
+
 @dashboard_bp.get("/dashboard-data")
 @token_required
 def dashboard():
@@ -604,7 +604,7 @@ def dashboard():
         return {"error": "Internal server error"}, 500
 
 
-# ========== INCIDENT ROUTES ==========
+
 @incident_bp.get("/incidents")
 @token_required
 def get_incidents_route():
@@ -758,7 +758,7 @@ def delete_incident_route(incident_id):
         return {"error": "Internal server error"}, 500
 
 
-# ========== EMAIL NOTIFICATION ROUTE ==========
+
 @incident_bp.post("/send-alert-email")
 @token_required
 def send_alert_email():
@@ -794,7 +794,7 @@ def send_alert_email():
         return {"error": "Internal server error"}, 500
 
 
-# ========== VIDEO STREAM ROUTE ==========
+
 @camera_bp.get("/video")
 def video_stream():
     try:
@@ -810,7 +810,7 @@ def video_stream():
         return {"error": "Internal server error"}, 500
 
 
-# ========== DETECTION STATUS ENDPOINT ==========
+
 @detection_bp.get("/detection-status")
 def get_detection_status():
     """Get current detection status from AI service - PUBLIC endpoint"""
