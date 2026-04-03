@@ -4,16 +4,19 @@ import os
 import base64
 from datetime import datetime, timedelta
 from flask import Blueprint, request, Response
-from auth import create_token, verify_token, token_required, get_token_from_request, verify_password, hash_password
+from auth import create_token, verify_token, token_required, get_token_from_request, verify_password
 from models import (
     get_user_by_username, get_all_officers, create_user, delete_user, update_password, update_user_profile,
     log_detection, get_weapon_preferences, update_weapon_preferences, get_cameras_list,
     get_detection_logs, get_dashboard_data,
-    create_incident, get_incidents, get_incident_by_id, update_incident, get_incident_actions
+    create_incident, get_incidents, get_incident_by_id, update_incident, get_incident_actions, delete_incident,
+    
+    get_all_cameras, create_camera, update_camera, delete_camera, toggle_camera_status
 )
-from config import AI_STREAM_URL, DEFAULT_WEAPONS
+from config import DEFAULT_WEAPONS
+from stream import generate, get_latest_detection, reload_camera_config
 
-# Create blueprints
+
 auth_bp = Blueprint('auth', __name__)
 camera_bp = Blueprint('camera', __name__)
 detection_bp = Blueprint('detection', __name__)
@@ -21,24 +24,45 @@ dashboard_bp = Blueprint('dashboard', __name__)
 incident_bp = Blueprint('incident', __name__)
 admin_bp = Blueprint('admin', __name__)
 
-# Create images directory if it doesn't exist
+
 IMAGES_DIR = os.path.join(os.path.dirname(__file__), 'incident_images')
 os.makedirs(IMAGES_DIR, exist_ok=True)
 
-# Weapon type mapping from MQTT to database format
+
+
 WEAPON_TYPE_MAP = {
+    
     'gun': 'pistol',
     'heavy-weapon': 'heavy_weapon',
+    'heavy_weapon': 'heavy_weapon',
     'knife': 'knife',
     'pistol': 'pistol',
-    'heavy_weapon': 'heavy_weapon'
+    
+    'Gun': 'pistol',
+    'Pistol': 'pistol',
+    'Knife': 'knife',
+    'Heavy Weapon': 'heavy_weapon',
+    'Heavy-Weapon': 'heavy_weapon',
+    'Heavy_Weapon': 'heavy_weapon',
+    
+    'GUN': 'pistol',
+    'PISTOL': 'pistol',
+    'KNIFE': 'knife',
+    'HEAVY WEAPON': 'heavy_weapon',
+    'HEAVY-WEAPON': 'heavy_weapon',
+    'HEAVY_WEAPON': 'heavy_weapon',
 }
 
-def normalize_weapon_type(weapon_type):
-    """Normalize weapon type from MQTT to database format"""
-    return WEAPON_TYPE_MAP.get(weapon_type.lower(), weapon_type.lower())
+def normalize_weapon_type(weapon_type: str) -> str:
+    
+    
+    if weapon_type in WEAPON_TYPE_MAP:
+        return WEAPON_TYPE_MAP[weapon_type]
+    
+    normalized = weapon_type.lower().replace(' ', '_').replace('-', '_')
+    return WEAPON_TYPE_MAP.get(normalized, normalized)
 
-# ========== AUTH ROUTES ==========
+
 @auth_bp.post("/login")
 def login():
     try:
@@ -145,7 +169,7 @@ def update_profile():
         return {"error": "Internal server error"}, 500
 
 
-# ========== ADMIN ROUTES ==========
+
 @admin_bp.get("/officers")
 @token_required
 def get_officers():
@@ -208,7 +232,110 @@ def delete_officer(username):
         return {"error": "Internal server error"}, 500
 
 
-# ========== CAMERA ROUTES ==========
+
+
+@admin_bp.get("/admin/cameras")
+@token_required
+def admin_get_cameras():
+    
+    try:
+        if request.user.get('role') != 'admin':
+            return {"error": "Unauthorized - Admin only"}, 403
+        
+        cameras_list = get_all_cameras()
+        return {"cameras": [dict(cam) for cam in cameras_list]}
+    except Exception as e:
+        print(f"Admin get cameras error: {e}")
+        return {"error": "Internal server error"}, 500
+
+
+@admin_bp.post("/admin/cameras")
+@token_required
+def admin_create_camera():
+    
+    try:
+        if request.user.get('role') != 'admin':
+            return {"error": "Unauthorized - Admin only"}, 403
+        
+        data = request.json
+        if not data or not data.get("camera_name") or not data.get("location"):
+            return {"error": "camera_name and location are required"}, 400
+        
+        camera_id, error = create_camera(data)
+        if camera_id:
+            reload_camera_config()
+            return {"message": "Camera created successfully", "camera_id": camera_id}, 201
+        else:
+            return {"error": error or "Failed to create camera"}, 409
+    except Exception as e:
+        print(f"Admin create camera error: {e}")
+        return {"error": "Internal server error"}, 500
+
+
+@admin_bp.put("/admin/cameras/<int:camera_id>")
+@token_required
+def admin_update_camera(camera_id):
+    
+    try:
+        if request.user.get('role') != 'admin':
+            return {"error": "Unauthorized - Admin only"}, 403
+        
+        data = request.json
+        if not data or not data.get("camera_name") or not data.get("location"):
+            return {"error": "camera_name and location are required"}, 400
+        
+        success, error = update_camera(camera_id, data)
+        if success:
+            reload_camera_config()
+            return {"message": "Camera updated successfully"}
+        else:
+            return {"error": error or "Camera not found"}, 404
+    except Exception as e:
+        print(f"Admin update camera error: {e}")
+        return {"error": "Internal server error"}, 500
+
+
+@admin_bp.delete("/admin/cameras/<int:camera_id>")
+@token_required
+def admin_delete_camera(camera_id):
+    
+    try:
+        if request.user.get('role') != 'admin':
+            return {"error": "Unauthorized - Admin only"}, 403
+        
+        success, message = delete_camera(camera_id)
+        if success:
+            return {"message": message}
+        else:
+            return {"error": message}, 400
+    except Exception as e:
+        print(f"Admin delete camera error: {e}")
+        return {"error": "Internal server error"}, 500
+
+
+@admin_bp.patch("/admin/cameras/<int:camera_id>/toggle")
+@token_required
+def admin_toggle_camera(camera_id):
+    
+    try:
+        if request.user.get('role') != 'admin':
+            return {"error": "Unauthorized - Admin only"}, 403
+        
+        new_status = toggle_camera_status(camera_id)
+        if new_status is None:
+            return {"error": "Camera not found"}, 404
+        
+        reload_camera_config()
+        return {
+            "message": f"Camera {'activated' if new_status else 'deactivated'} successfully",
+            "is_active": new_status
+        }
+    except Exception as e:
+        print(f"Admin toggle camera error: {e}")
+        return {"error": "Internal server error"}, 500
+
+
+
 @camera_bp.get("/cameras")
 def cameras():
     try:
@@ -219,7 +346,7 @@ def cameras():
         return {"error": "Internal server error"}, 500
 
 
-# ========== WEAPON PREFERENCES ROUTES ==========
+
 @detection_bp.get("/weapon-preferences")
 @token_required
 def get_prefs():
@@ -261,24 +388,20 @@ def set_prefs():
         return {"error": "Internal server error"}, 500
 
 
-# ========== DETECTION ROUTES ==========
+
 @detection_bp.post("/log-detection")
 @token_required
 def log_det():
-    """
-    Log detection with optional image capture
-    UPDATED: 1-minute cooldown instead of 5 minutes
-    """
     try:
         data = request.json
         if not data or not data.get('weapon_type') or not data.get('camera_id'):
             return {"error": "Missing weapon_type or camera_id"}, 400
         
         user_id = request.user.get('user_id')
-        weapon_type = data['weapon_type']
+        weapon_type = normalize_weapon_type(data['weapon_type'])  
         camera_id = data['camera_id']
         confidence_score = data.get('confidence_score', 0.85)
-        image_data = data.get('image')  # Base64 encoded image
+        image_data = data.get('image')
         
         from database import get_db_connection
         from datetime import datetime, timedelta
@@ -286,7 +409,6 @@ def log_det():
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # UPDATED: 1-minute cooldown instead of 5 minutes
             one_minute_ago = datetime.now() - timedelta(minutes=1)
             
             cursor.execute('''
@@ -303,54 +425,44 @@ def log_det():
             if existing_detection:
                 detection_id = existing_detection['id']
                 time_since = (datetime.now() - datetime.fromisoformat(existing_detection['detection_time'])).total_seconds()
-                remaining = int(60 - time_since)  # UPDATED: 60 seconds instead of 300
+                remaining = int(60 - time_since)
                 
                 print(f"⏳ Skipping log for {weapon_type} on camera {camera_id} - recent detection {int(time_since)}s ago (cooldown: {remaining}s remaining)")
                 
                 is_new_log = False
                 image_path = existing_detection['image_path']
             else:
-                # Save image if provided
                 image_path = None
                 if image_data:
                     try:
-                        # Remove data URL prefix if present
                         if ',' in image_data:
                             image_data = image_data.split(',')[1]
                         
-                        # Decode base64 image
                         img_bytes = base64.b64decode(image_data)
                         
-                        # Generate filename
                         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                         filename = f"{weapon_type}_{camera_id}_{timestamp}.jpg"
                         filepath = os.path.join(IMAGES_DIR, filename)
                         
-                        # Save image
                         with open(filepath, 'wb') as f:
                             f.write(img_bytes)
                         
-                        # Store path WITHOUT 'incident_images/' prefix since we'll add it in the route
                         image_path = filename
-                        print(f"📸 Saved detection image: {filepath} (stored as: {image_path})")
+                        print(f"📸 Saved detection image: {filepath}")
                     except Exception as e:
                         print(f"❌ Error saving image: {e}")
                         import traceback
                         traceback.print_exc()
                 
-                # Create new detection log with image path
                 detection_id = log_detection(user_id, camera_id, weapon_type, confidence_score, image_path)
-                
-                print(f"✅ Created NEW detection log #{detection_id} for {weapon_type} on camera {camera_id} (confidence: {confidence_score:.2%})")
+                print(f"✅ Created NEW detection log #{detection_id} for {weapon_type} on camera {camera_id}")
                 
                 is_new_log = True
             
-            # Rest of the incident creation logic...
             incident_id = None
             is_new_incident = False
             
             if confidence_score >= 0.80:
-                # UPDATED: 1-minute window for incident grouping
                 cursor.execute('''
                     SELECT id, status FROM incidents 
                     WHERE camera_id = ? 
@@ -365,12 +477,9 @@ def log_det():
                 
                 if existing_incident:
                     incident_id = existing_incident['id']
-                    print(f"✓ Using existing incident #{incident_id} for {weapon_type} (status: {existing_incident['status']})")
-                    
                     cursor.execute('UPDATE detection_logs SET incident_id = ? WHERE id = ?', 
                                  (incident_id, detection_id))
                     conn.commit()
-                    
                     is_new_incident = False
                 else:
                     cursor.execute('SELECT location FROM cameras WHERE id = ?', (camera_id,))
@@ -378,17 +487,12 @@ def log_det():
                     location = row['location'] if row else 'Unknown'
                     
                     incident_id = create_incident(
-                        camera_id, 
-                        weapon_type,
-                        detection_id, 
-                        user_id, 
-                        location,
+                        camera_id, weapon_type, detection_id, user_id, location,
                         f"Automatic incident created from {weapon_type} detection",
-                        image_path  # Pass the image path to incident
+                        image_path
                     )
                     
-                    print(f"🚨 Created NEW incident #{incident_id} for {weapon_type} detection (confidence: {confidence_score:.2%})")
-                    
+                    print(f"🚨 Created NEW incident #{incident_id} for {weapon_type} detection")
                     is_new_incident = True
             
             if incident_id:
@@ -424,13 +528,11 @@ def get_logs():
         days = request.args.get('days', 7, type=int)
         limit = request.args.get('limit', 100, type=int)
         
-        # NEW: Time filter parameters
-        start_time = request.args.get('start_time')  # Format: HH:MM
-        end_time = request.args.get('end_time')      # Format: HH:MM
+        start_time = request.args.get('start_time')
+        end_time = request.args.get('end_time')
         
         logs = get_detection_logs(camera_id, weapon_type, days, limit)
         
-        # NEW: Filter by time of day if provided
         if start_time or end_time:
             filtered_logs = []
             for log in logs:
@@ -442,11 +544,9 @@ def get_logs():
                         end = datetime.strptime(end_time, '%H:%M').time()
                         
                         if start <= end:
-                            # Normal range (e.g., 09:00 to 17:00)
                             if start <= log_time <= end:
                                 filtered_logs.append(log)
                         else:
-                            # Overnight range (e.g., 22:00 to 06:00)
                             if log_time >= start or log_time <= end:
                                 filtered_logs.append(log)
                     elif start_time:
@@ -469,42 +569,26 @@ def get_logs():
         return {"error": "Internal server error"}, 500
 
 
-# ========== IMAGE SERVING ROUTE ==========
+
 @detection_bp.get("/incident_images/<path:filename>")
 def serve_incident_image(filename):
-    """Serve incident images"""
+    
     try:
-        # Remove any 'incident_images/' prefix from filename if present
         clean_filename = filename.replace('incident_images/', '')
-        
         filepath = os.path.join(IMAGES_DIR, clean_filename)
-        
-        print(f"📸 Attempting to serve image: {filepath}")
-        print(f"📂 IMAGES_DIR: {IMAGES_DIR}")
-        print(f"📄 Clean filename: {clean_filename}")
-        print(f"✓ File exists: {os.path.exists(filepath)}")
         
         if os.path.exists(filepath):
             with open(filepath, 'rb') as f:
                 image_data = f.read()
-            print(f"✅ Successfully loaded image: {len(image_data)} bytes")
             return Response(image_data, mimetype='image/jpeg')
         else:
-            print(f"❌ Image not found at: {filepath}")
-            # List files in directory for debugging
-            if os.path.exists(IMAGES_DIR):
-                print(f"📂 Files in {IMAGES_DIR}:")
-                for f in os.listdir(IMAGES_DIR):
-                    print(f"  - {f}")
             return {"error": "Image not found"}, 404
     except Exception as e:
         print(f"❌ Serve image error: {e}")
-        import traceback
-        traceback.print_exc()
         return {"error": "Internal server error"}, 500
 
 
-# ========== DASHBOARD ROUTES ==========
+
 @dashboard_bp.get("/dashboard-data")
 @token_required
 def dashboard():
@@ -520,7 +604,7 @@ def dashboard():
         return {"error": "Internal server error"}, 500
 
 
-# ========== INCIDENT ROUTES ==========
+
 @incident_bp.get("/incidents")
 @token_required
 def get_incidents_route():
@@ -529,9 +613,8 @@ def get_incidents_route():
         assigned_to = request.args.get('assigned_to', type=int)
         limit = request.args.get('limit', 100, type=int)
         
-        # NEW: Time filter parameters
-        start_time = request.args.get('start_time')  # Format: HH:MM
-        end_time = request.args.get('end_time')      # Format: HH:MM
+        start_time = request.args.get('start_time')
+        end_time = request.args.get('end_time')
         
         user_id = request.user.get('user_id')
         user_role = request.user.get('role')
@@ -541,7 +624,6 @@ def get_incidents_route():
         else:
             incidents_list = get_incidents(status, assigned_to, limit, officer_view=False)
         
-        # NEW: Filter by time of day if provided
         if start_time or end_time:
             filtered_incidents = []
             for incident in incidents_list:
@@ -553,11 +635,9 @@ def get_incidents_route():
                         end = datetime.strptime(end_time, '%H:%M').time()
                         
                         if start <= end:
-                            # Normal range (e.g., 09:00 to 17:00)
                             if start <= incident_time <= end:
                                 filtered_incidents.append(incident)
                         else:
-                            # Overnight range (e.g., 22:00 to 06:00)
                             if incident_time >= start or incident_time <= end:
                                 filtered_incidents.append(incident)
                     elif start_time:
@@ -657,7 +737,28 @@ def create_incident_route():
         return {"error": "Internal server error"}, 500
 
 
-# ========== EMAIL NOTIFICATION ROUTE ==========
+@incident_bp.delete("/incidents/<int:incident_id>")
+@token_required
+def delete_incident_route(incident_id):
+    try:
+        user_role = request.user.get('role')
+        if user_role != 'admin':
+            return {"error": "Unauthorized - Admin only"}, 403
+            
+        incident = get_incident_by_id(incident_id)
+        if not incident:
+            return {"error": "Incident not found"}, 404
+            
+        if delete_incident(incident_id):
+            return {"message": "Incident and associated image deleted successfully"}
+        else:
+            return {"error": "Failed to delete incident"}, 500
+    except Exception as e:
+        print(f"Delete incident error: {e}")
+        return {"error": "Internal server error"}, 500
+
+
+
 @incident_bp.post("/send-alert-email")
 @token_required
 def send_alert_email():
@@ -680,17 +781,10 @@ def send_alert_email():
         ===========================================
         To: {user['email']}
         Subject: URGENT: Weapon Detected - {incident['incident_number']}
-        
-        A {data.get('weapon_type', 'weapon')} has been detected!
-        
         Location: {data.get('location', 'Unknown')}
         Camera: {data.get('camera_name', 'Unknown')}
         Time: {data.get('detected_at', 'Unknown')}
         Incident: {incident['incident_number']}
-        
-        Please respond immediately.
-        
-        View incident: http://localhost:5173/
         ===========================================
         """)
         
@@ -700,7 +794,7 @@ def send_alert_email():
         return {"error": "Internal server error"}, 500
 
 
-# ========== VIDEO STREAM ROUTE ==========
+
 @camera_bp.get("/video")
 def video_stream():
     try:
@@ -710,34 +804,18 @@ def video_stream():
         if not token or not verify_token(token):
             return {"error": "Unauthorized"}, 401
 
-        r = requests.get(AI_STREAM_URL, stream=True)
-        return Response(r.iter_content(chunk_size=1024),
-                        content_type=r.headers.get("Content-Type", "multipart/x-mixed-replace; boundary=frame"))
+        return Response(generate(camera_id), mimetype="multipart/x-mixed-replace; boundary=frame")
     except Exception as e:
         print(f"Video proxy error: {e}")
         return {"error": "Internal server error"}, 500
 
 
-# ========== DETECTION STATUS ENDPOINT ==========
+
 @detection_bp.get("/detection-status")
 def get_detection_status():
-    """Get current detection status from AI service - PUBLIC endpoint"""
+    
     try:
-        detection_response = requests.get(f"{AI_STREAM_URL.replace('/stream', '/detection')}", timeout=2)
-        
-        if detection_response.ok:
-            detection_data = detection_response.json()
-            return {
-                "detected": detection_data.get('detected', False),
-                "objects": detection_data.get('objects', {}),
-                "timestamp": detection_data.get('timestamp')
-            }
-        else:
-            return {
-                "detected": False,
-                "objects": {},
-                "timestamp": None
-            }
+        return get_latest_detection()
     except Exception as e:
         print(f"Error getting detection status: {e}")
         return {

@@ -5,7 +5,7 @@ from config import pwd_ctx, DEFAULT_WEAPONS
 
 
 def dict_from_row(row):
-    """Safely convert sqlite3.Row to dict with defaults for missing columns"""
+    
     if not row:
         return None
     
@@ -18,7 +18,7 @@ def dict_from_row(row):
 
 
 def get_user_by_username(username):
-    """Get user by username"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM users WHERE username = ?', (username,))
@@ -27,7 +27,7 @@ def get_user_by_username(username):
 
 
 def get_all_officers():
-    """Get all officers (for admin)"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''SELECT id, username, first_name, last_name, badge_number, 
@@ -36,7 +36,7 @@ def get_all_officers():
 
 
 def create_user(data):
-    """Create a new user (admin creates officers)"""
+    
     password_hash = pwd_ctx.hash(data['password'])
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -51,7 +51,7 @@ def create_user(data):
                            data.get('badge_number', ''), data.get('department', '')))
             user_id = cursor.lastrowid
             
-            # Create default weapon preferences
+            
             for weapon in DEFAULT_WEAPONS:
                 cursor.execute('''INSERT INTO weapon_preferences 
                                 (user_id, weapon_type, is_enabled) VALUES (?, ?, ?)''',
@@ -64,7 +64,7 @@ def create_user(data):
 
 
 def delete_user(username):
-    """Delete a user and all related data"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         user = get_user_by_username(username)
@@ -82,7 +82,7 @@ def delete_user(username):
 
 
 def update_password(username, new_password):
-    """Update user password"""
+    
     new_password_hash = pwd_ctx.hash(new_password)
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -93,7 +93,7 @@ def update_password(username, new_password):
 
 
 def update_user_profile(username, first_name, last_name, phone, badge_number, department):
-    """Update user profile information"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''UPDATE users 
@@ -105,16 +105,13 @@ def update_user_profile(username, first_name, last_name, phone, badge_number, de
         return cursor.rowcount > 0
 
 
-# Add this updated function to models.py
-
 def log_detection(user_id, camera_id, weapon_type, confidence_score=0.85, image_path=None):
-    """Log a weapon detection with optional image path and update daily summary"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         now = datetime.now()
         today = date.today()
         
-        # Insert detection log with image path
         cursor.execute('''INSERT INTO detection_logs 
                          (user_id, camera_id, weapon_type, confidence_score, detection_time, date_only, image_path) 
                          VALUES (?, ?, ?, ?, ?, ?, ?)''',
@@ -122,7 +119,6 @@ def log_detection(user_id, camera_id, weapon_type, confidence_score=0.85, image_
         
         detection_id = cursor.lastrowid
         
-        # Update daily summary
         cursor.execute('''INSERT OR REPLACE INTO daily_summary 
                          (user_id, camera_id, detection_date, weapon_type, total_detections, 
                           avg_confidence, first_detection, last_detection)
@@ -145,22 +141,21 @@ def log_detection(user_id, camera_id, weapon_type, confidence_score=0.85, image_
 
 
 def create_incident(camera_id, weapon_type, detection_id, created_by, location, description='', image_path=None):
-    """Create a new incident from detection with optional image"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
-        # Get detection time and image path if not provided
         cursor.execute('SELECT detection_time, image_path FROM detection_logs WHERE id = ?', (detection_id,))
         row = cursor.fetchone()
         detected_at = row['detection_time'] if row else datetime.now()
         
-        # Use detection's image if incident doesn't have one
         if not image_path and row and row['image_path']:
             image_path = row['image_path']
         
-        # Generate incident number
         now = datetime.now()
-        incident_number = f"INC-{now.strftime('%Y%m%d-%H%M%S')}"
+        import random
+        unique_suffix = now.strftime('%f')[:4]  
+        incident_number = f"INC-{now.strftime('%Y%m%d-%H%M%S')}-{unique_suffix}"
         
         cursor.execute('''INSERT INTO incidents 
                          (incident_number, camera_id, weapon_type, detection_id, created_by, 
@@ -171,11 +166,9 @@ def create_incident(camera_id, weapon_type, detection_id, created_by, location, 
         
         incident_id = cursor.lastrowid
         
-        # Update detection log
         cursor.execute('UPDATE detection_logs SET incident_id = ? WHERE id = ?', 
                       (incident_id, detection_id))
         
-        # Log action
         cursor.execute('''INSERT INTO incident_actions 
                          (incident_id, user_id, action_type, notes) 
                          VALUES (?, ?, 'created', 'Incident created from weapon detection')''',
@@ -186,15 +179,7 @@ def create_incident(camera_id, weapon_type, detection_id, created_by, location, 
 
 
 def get_incidents(status=None, assigned_to=None, limit=100, officer_view=False):
-    """Get incidents with filters
     
-    Args:
-        status: Filter by status
-        assigned_to: For officers (officer_view=True), this is the officer's user_id
-                    For admins (officer_view=False), this is optional filter
-        limit: Max results
-        officer_view: If True, return only incidents for the officer (assigned or unassigned)
-    """
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
@@ -213,11 +198,9 @@ def get_incidents(status=None, assigned_to=None, limit=100, officer_view=False):
         
         params = []
         
-        # Officer view: only show their assignments or unassigned incidents
         if officer_view and assigned_to:
             query += ' AND (i.assigned_to = ? OR i.assigned_to IS NULL)'
             params.append(assigned_to)
-        # Admin view with optional filter
         elif not officer_view and assigned_to:
             query += ' AND i.assigned_to = ?'
             params.append(assigned_to)
@@ -234,7 +217,7 @@ def get_incidents(status=None, assigned_to=None, limit=100, officer_view=False):
 
 
 def get_incident_by_id(incident_id):
-    """Get incident details"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
@@ -253,7 +236,7 @@ def get_incident_by_id(incident_id):
 
 
 def update_incident(incident_id, user_id, updates):
-    """Update incident details"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
@@ -294,7 +277,6 @@ def update_incident(incident_id, user_id, updates):
         query = f"UPDATE incidents SET {', '.join(set_parts)} WHERE id = ?"
         cursor.execute(query, params)
         
-        # Log action
         action_type = updates.get('status', 'updated')
         cursor.execute('''INSERT INTO incident_actions 
                          (incident_id, user_id, action_type, notes) 
@@ -307,7 +289,7 @@ def update_incident(incident_id, user_id, updates):
 
 
 def get_incident_actions(incident_id):
-    """Get action history for incident"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
@@ -320,17 +302,51 @@ def get_incident_actions(incident_id):
         return cursor.fetchall()
 
 
-# ========== EXISTING FUNCTIONS ==========
+def delete_incident(incident_id):
+    
+    import os
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        
+        
+        cursor.execute('SELECT image_path FROM incidents WHERE id = ?', (incident_id,))
+        incident = cursor.fetchone()
+        
+        
+        if incident and incident['image_path']:
+            image_path = incident['image_path']
+            IMAGES_DIR = os.path.join(os.path.dirname(__file__), 'incident_images')
+            filepath = os.path.join(IMAGES_DIR, image_path)
+            if os.path.exists(filepath):
+                try:
+                    os.remove(filepath)
+                    print(f"🗑️ Deleted image file: {filepath}")
+                except Exception as e:
+                    print(f"⚠️ Failed to delete image file {filepath}: {e}")
+                    
+        
+        cursor.execute('UPDATE detection_logs SET incident_id = NULL WHERE incident_id = ?', (incident_id,))
+        
+        
+        cursor.execute('DELETE FROM incident_actions WHERE incident_id = ?', (incident_id,))
+        
+        
+        cursor.execute('DELETE FROM incidents WHERE id = ?', (incident_id,))
+        
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+
 
 def get_weapon_preferences(user_id):
-    """Get weapon preferences for user"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''SELECT weapon_type, is_enabled FROM weapon_preferences 
                          WHERE user_id = ? ORDER BY weapon_type''', (user_id,))
         prefs = cursor.fetchall()
         
-        # If no preferences exist, create defaults
         if not prefs:
             print(f"No preferences found for user {user_id}, creating defaults...")
             for weapon in DEFAULT_WEAPONS:
@@ -339,7 +355,6 @@ def get_weapon_preferences(user_id):
                               (user_id, weapon, True))
             conn.commit()
             
-            # Fetch the newly created preferences
             cursor.execute('''SELECT weapon_type, is_enabled FROM weapon_preferences 
                              WHERE user_id = ? ORDER BY weapon_type''', (user_id,))
             prefs = cursor.fetchall()
@@ -348,7 +363,7 @@ def get_weapon_preferences(user_id):
 
 
 def update_weapon_preferences(user_id, preferences):
-    """Update weapon preferences - FIXED to use INSERT OR REPLACE"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
@@ -358,15 +373,9 @@ def update_weapon_preferences(user_id, preferences):
             weapon_type = pref.get('weapon_type')
             is_enabled = pref.get('is_enabled', True)
             
-            # Use INSERT OR REPLACE to handle both new and existing preferences
             cursor.execute('''INSERT OR REPLACE INTO weapon_preferences 
                              (user_id, weapon_type, is_enabled, updated_at) 
-                             VALUES (
-                                 ?, 
-                                 ?, 
-                                 ?,
-                                 CURRENT_TIMESTAMP
-                             )''',
+                             VALUES (?, ?, ?, CURRENT_TIMESTAMP)''',
                           (user_id, weapon_type, is_enabled))
             
             print(f"  - {weapon_type}: {'enabled' if is_enabled else 'disabled'}")
@@ -376,16 +385,16 @@ def update_weapon_preferences(user_id, preferences):
 
 
 def get_cameras_list():
-    """Get all active cameras"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''SELECT id, camera_name, location, description, is_active 
-                         FROM cameras WHERE is_active = TRUE ORDER BY camera_name''')
+                         FROM cameras WHERE is_active = TRUE''')
         return cursor.fetchall()
 
 
 def get_detection_logs(camera_id=None, weapon_type=None, days=7, limit=100):
-    """Get detection logs with filters"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
@@ -416,11 +425,10 @@ def get_detection_logs(camera_id=None, weapon_type=None, days=7, limit=100):
 
 
 def get_dashboard_data(user_id, days=7, camera_id=None):
-    """Get dashboard data - show all detections regardless of user"""
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
-        # Get daily summary - ALL USERS
         query = '''
             SELECT ds.*, c.camera_name, c.location
             FROM daily_summary ds
@@ -439,7 +447,6 @@ def get_dashboard_data(user_id, days=7, camera_id=None):
         cursor.execute(query, params)
         daily_data = cursor.fetchall()
         
-        # Get weapon totals - ALL USERS
         query2 = '''
             SELECT ds.weapon_type, SUM(ds.total_detections) as total, AVG(ds.avg_confidence) as avg_conf
             FROM daily_summary ds
@@ -457,7 +464,6 @@ def get_dashboard_data(user_id, days=7, camera_id=None):
         cursor.execute(query2, params2)
         weapon_totals = cursor.fetchall()
         
-        # Get recent detections - ALL USERS
         query3 = '''
             SELECT dl.*, c.camera_name, c.location, u.username
             FROM detection_logs dl
@@ -482,3 +488,177 @@ def get_dashboard_data(user_id, days=7, camera_id=None):
             "weapon_totals": [dict(row) for row in weapon_totals],
             "recent_detections": [dict(row) for row in recent_detections]
         }
+
+
+import threading
+_detection_cooldown_lock = threading.Lock()
+
+def process_system_detection(camera_id, weapon_type, confidence_score, image_bytes=None):
+    
+    from datetime import datetime, timedelta
+    import os
+    from config import SYSTEM_USER
+    
+    with _detection_cooldown_lock:
+        system_user_id = 1
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT id FROM users WHERE username = ?', (SYSTEM_USER['username'],))
+            row = cursor.fetchone()
+            if row:
+                system_user_id = row['id']
+                
+            one_minute_ago = datetime.now() - timedelta(minutes=1)
+            cursor.execute('''
+                SELECT id, detection_time, image_path FROM detection_logs 
+                WHERE camera_id = ? 
+                  AND weapon_type = ? 
+                  AND detection_time >= ?
+                ORDER BY detection_time DESC
+                LIMIT 1
+            ''', (camera_id, weapon_type, one_minute_ago))
+            
+            existing_detection = cursor.fetchone()
+            
+            if existing_detection:
+                time_since = (datetime.now() - datetime.fromisoformat(existing_detection['detection_time'])).total_seconds()
+                print(f"⏳ System skipping log for {weapon_type} on camera {camera_id} - recent detection {int(time_since)}s ago")
+                return {"detection_id": existing_detection['id'], "incident_id": None, "image_path": existing_detection['image_path'], "is_new": False}
+
+        image_path = None
+        if image_bytes:
+            try:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"{weapon_type}_{camera_id}_{timestamp}.jpg"
+                IMAGES_DIR = os.path.join(os.path.dirname(__file__), 'incident_images')
+                os.makedirs(IMAGES_DIR, exist_ok=True)
+                filepath = os.path.join(IMAGES_DIR, filename)
+                
+                with open(filepath, 'wb') as f:
+                    f.write(image_bytes)
+                image_path = filename
+            except Exception as e:
+                print(f"❌ Error saving system image: {e}")
+                
+        detection_id = log_detection(system_user_id, camera_id, weapon_type, confidence_score, image_path)
+        print(f"✅ Created NEW SYSTEM detection log #{detection_id} for {weapon_type}")
+        
+        incident_id = None
+        if confidence_score >= 0.80:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                one_minute_ago = datetime.now() - timedelta(minutes=1)
+
+                cursor.execute('''
+                    SELECT id, status FROM incidents 
+                    WHERE camera_id = ? AND weapon_type = ? AND detected_at >= ? AND status IN ('pending', 'responding')
+                    ORDER BY detected_at DESC LIMIT 1
+                ''', (camera_id, weapon_type, one_minute_ago))
+                existing_incident = cursor.fetchone()
+
+                if existing_incident:
+                    incident_id = existing_incident['id']
+                    cursor.execute('UPDATE detection_logs SET incident_id = ? WHERE id = ?', (incident_id, detection_id))
+                    conn.commit()
+                else:
+                    cursor.execute('SELECT location FROM cameras WHERE id = ?', (camera_id,))
+                    row = cursor.fetchone()
+                    location = row['location'] if row else 'Unknown'
+                    incident_id = create_incident(camera_id, weapon_type, detection_id, system_user_id, location, f"Automatic system incident for {weapon_type}", image_path)
+                    
+        return {"detection_id": detection_id, "incident_id": incident_id, "image_path": image_path, "is_new": True}
+
+
+
+
+def get_all_cameras():
+    
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''SELECT id, camera_name, location, description, stream_url, rtsp_url, mqtt_topic, is_active, created_at 
+                         FROM cameras ORDER BY id''')
+        return cursor.fetchall()
+
+
+def create_camera(data):
+    
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        
+        mqtt_topic = data.get('mqtt_topic', '').strip()
+        if mqtt_topic:
+            cursor.execute('SELECT id FROM cameras WHERE mqtt_topic = ?', (mqtt_topic,))
+            if cursor.fetchone():
+                return None, "MQTT topic is already in use by another camera"
+
+        try:
+            cursor.execute('''INSERT INTO cameras 
+                            (camera_name, location, description, stream_url, rtsp_url, mqtt_topic, is_active) 
+                            VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                          (data['camera_name'], data['location'],
+                           data.get('description', ''),
+                           data.get('stream_url', ''),
+                           data.get('rtsp_url', ''),
+                           data.get('mqtt_topic', ''),
+                           data.get('is_active', True)))
+            conn.commit()
+            return cursor.lastrowid, None
+        except sqlite3.IntegrityError:
+            return None, "Camera name already exists"
+
+
+def update_camera(camera_id, data):
+    
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''UPDATE cameras 
+                             SET camera_name = ?, location = ?, description = ?, 
+                                 stream_url = ?, rtsp_url = ?, mqtt_topic = ?, is_active = ?
+                             WHERE id = ?''',
+                          (data['camera_name'], data['location'],
+                           data.get('description', ''),
+                           data.get('stream_url', ''),
+                           data.get('rtsp_url', ''),
+                           data.get('mqtt_topic', ''),
+                           data.get('is_active', True),
+                           camera_id))
+            conn.commit()
+            return cursor.rowcount > 0, None
+        except sqlite3.IntegrityError:
+            return False, "Camera name already exists"
+
+
+def delete_camera(camera_id):
+    
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) as cnt FROM detection_logs WHERE camera_id = ?', (camera_id,))
+        row = cursor.fetchone()
+        if row and row['cnt'] > 0:
+            return False, "Cannot delete camera with existing detection logs"
+
+        cursor.execute('SELECT COUNT(*) as cnt FROM incidents WHERE camera_id = ?', (camera_id,))
+        row = cursor.fetchone()
+        if row and row['cnt'] > 0:
+            return False, "Cannot delete camera with existing incidents"
+
+        cursor.execute('DELETE FROM cameras WHERE id = ?', (camera_id,))
+        conn.commit()
+        if cursor.rowcount > 0:
+            return True, "Camera deleted successfully"
+        return False, "Camera not found"
+
+
+def toggle_camera_status(camera_id):
+    
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT is_active FROM cameras WHERE id = ?', (camera_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        new_status = not bool(row['is_active'])
+        cursor.execute('UPDATE cameras SET is_active = ? WHERE id = ?', (new_status, camera_id))
+        conn.commit()
+        return new_status

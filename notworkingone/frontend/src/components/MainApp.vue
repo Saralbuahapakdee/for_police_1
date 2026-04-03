@@ -17,6 +17,9 @@
           <button @click="activeTab = 'dashboard'" :class="{ active: activeTab === 'dashboard' }" class="nav-tab">
             📊 Analytics
           </button>
+          <button v-if="userData.role === 'admin'" @click="activeTab = 'cameras'" :class="{ active: activeTab === 'cameras' }" class="nav-tab">
+            📷 Cameras
+          </button>
           <button v-if="userData.role === 'admin'" @click="activeTab = 'officers'" :class="{ active: activeTab === 'officers' }" class="nav-tab">
             👮 Officers
           </button>
@@ -40,6 +43,7 @@
       <StreamTab v-if="activeTab === 'stream'" :token="token" />
       <LogsTab v-if="activeTab === 'logs'" :token="token" />
       <DashboardTab v-if="activeTab === 'dashboard'" :token="token" />
+      <CamerasTab v-if="activeTab === 'cameras' && userData.role === 'admin'" :token="token" />
       <OfficersTab v-if="activeTab === 'officers' && userData.role === 'admin'" :token="token" />
       <ProfileTab v-if="activeTab === 'profile'" :token="token" :user-data="userData" />
     </div>
@@ -52,6 +56,7 @@ import IncidentsTab from '../tabs/IncidentsTab.vue'
 import StreamTab from '../tabs/StreamTab.vue'
 import LogsTab from '../tabs/LogsTab.vue'
 import DashboardTab from '../tabs/DashboardTab.vue'
+import CamerasTab from '../tabs/CamerasTab.vue'
 import OfficersTab from '../tabs/OfficersTab.vue'
 import ProfileTab from '../tabs/ProfileTab.vue'
 

@@ -1,0 +1,387 @@
+import time
+import cv2
+import paho.mqtt.client as paho
+from paho import mqtt
+import json
+import threading
+from datetime import datetime
+
+
+latest_detections = {}          
+detection_lock    = threading.Lock()
+mqtt_client       = None
+
+latest_raw_frames = {}          
+frame_locks       = {}          
+capture_threads   = {}          
+
+
+_topic_to_camera  = {}
+_config_lock      = threading.Lock()
+
+
+
+
+_WEAPON_TYPE_MAP = {
+    
+    'gun':          'pistol',
+    'pistol':       'pistol',
+    'knife':        'knife',
+    'heavy_weapon': 'heavy_weapon',
+    'heavy-weapon': 'heavy_weapon',
+    
+    'Pistol':       'pistol',
+    'Gun':          'pistol',
+    'Knife':        'knife',
+    'Heavy Weapon': 'heavy_weapon',
+    'Heavy-Weapon': 'heavy_weapon',
+    'Heavy_Weapon': 'heavy_weapon',
+    
+    'PISTOL':       'pistol',
+    'GUN':          'pistol',
+    'KNIFE':        'knife',
+    'HEAVY WEAPON': 'heavy_weapon',
+    'HEAVY-WEAPON': 'heavy_weapon',
+    'HEAVY_WEAPON': 'heavy_weapon',
+}
+
+def _normalize_weapon(weapon_type: str) -> str:
+    
+    if weapon_type in _WEAPON_TYPE_MAP:
+        return _WEAPON_TYPE_MAP[weapon_type]
+    
+    normalized = weapon_type.lower().replace(' ', '_').replace('-', '_')
+    return _WEAPON_TYPE_MAP.get(normalized, normalized)
+
+
+
+
+def _load_camera_config():
+    
+    try:
+        from database import get_db_connection
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, rtsp_url, mqtt_topic FROM cameras WHERE is_active = 1"
+            )
+            rows = cursor.fetchall()
+        return rows
+    except Exception as e:
+        print(f"⚠️  Could not load camera config from DB: {e}")
+        return []
+
+
+def reload_camera_config():
+    
+    global _topic_to_camera
+
+    rows = _load_camera_config()
+
+    new_topic_map  = {}
+    rtsp_map       = {}           
+
+    for row in rows:
+        cam_id    = row["id"]
+        rtsp_url  = (row["rtsp_url"] or "").strip()
+        topic     = (row["mqtt_topic"] or "").strip()
+
+        if rtsp_url:
+            rtsp_map[cam_id] = rtsp_url
+
+        if topic:
+            new_topic_map[topic] = cam_id
+
+    with _config_lock:
+        _topic_to_camera  = new_topic_map
+
+    
+    for cam_id, rtsp_url in rtsp_map.items():
+        if cam_id not in capture_threads or not capture_threads[cam_id].is_alive():
+            _start_one_capture_thread(cam_id, rtsp_url)
+
+    print(f"📡 Camera config loaded: {len(rows)} cameras | "
+          f"topics={list(new_topic_map.keys())}")
+
+
+def _resolve_camera_id(mqtt_topic: str):
+    
+    with _config_lock:
+        if mqtt_topic in _topic_to_camera:
+            return _topic_to_camera[mqtt_topic]
+
+    return None
+
+
+
+
+def _start_one_capture_thread(camera_id, rtsp_url):
+    if camera_id not in frame_locks:
+        frame_locks[camera_id]       = threading.Lock()
+        latest_raw_frames[camera_id] = None
+
+    t = threading.Thread(
+        target=capture_loop, args=(camera_id, rtsp_url), daemon=True
+    )
+    t.start()
+    capture_threads[camera_id] = t
+    print(f"🎥 Capture thread started for camera {camera_id}  ({rtsp_url[:40]}...)")
+
+
+def capture_loop(camera_id, rtsp_url):
+    cap = None
+
+    def open_cap():
+        c = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
+        if c.isOpened():
+            c.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            c.set(cv2.CAP_PROP_FPS, 10)
+            return c
+        return None
+
+    while True:
+        if cap is None or not cap.isOpened():
+            cap = open_cap()
+            if cap is None:
+                time.sleep(0.5)
+                continue
+
+        ok, frame = cap.read()
+        if not ok or frame is None:
+            try:
+                cap.release()
+            except Exception:
+                pass
+            cap = None
+            time.sleep(0.2)
+            continue
+
+        with frame_locks[camera_id]:
+            latest_raw_frames[camera_id] = frame
+
+
+def start_capture_threads():
+    
+    reload_camera_config()
+
+
+
+
+def draw_boxes_on_frame(frame, detection_objects):
+    for weapon_type, data in detection_objects.items():
+        boxes       = data.get("boxes", [])
+        confidences = data.get("confidences", [])
+
+        if len(confidences) < len(boxes):
+            confidences.extend([0] * (len(boxes) - len(confidences)))
+
+        for i, box in enumerate(boxes):
+            if len(box) == 4:
+                x1, y1, x2, y2 = map(int, box)
+                conf = confidences[i]
+
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+
+                label = f"{weapon_type}: {conf:.2f}"
+                (lw, lh), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+                cv2.rectangle(frame, (x1, y1 - 20), (x1 + lw, y1), (0, 0, 255), -1)
+                cv2.putText(frame, label, (x1, y1 - 5),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+    return frame
+
+
+
+
+def on_connect(client, _userdata, flags, rc, properties=None):
+    print(f"MQTT CONNACK rc={rc}")
+
+
+def on_message(client, _userdata, msg):
+    from models import process_system_detection
+
+    try:
+        parsed       = json.loads(msg.payload.decode("utf-8"))
+        camera_id    = _resolve_camera_id(msg.topic)
+
+        if camera_id is None:
+            print(f"⚠️  Ignoring message on topic '{msg.topic}' - no configured camera match.")
+            return
+
+        print(f"\n{'='*50}")
+        print(f"MQTT  topic={msg.topic}  →  camera_id={camera_id}")
+        print(f"Payload: {json.dumps(parsed, indent=2)}")
+        print(f"{'='*50}\n")
+
+        
+        processed_objects = {}
+        for raw_weapon_type, data in parsed.get("objects", {}).items():
+            weapon_type = _normalize_weapon(raw_weapon_type)   
+            if raw_weapon_type != weapon_type:
+                print(f"  🔄 Normalised weapon type: '{raw_weapon_type}' → '{weapon_type}'")
+
+            confs = data.get("confidences", [])
+            if not isinstance(confs, list):
+                confs = [confs]
+            processed_objects[weapon_type] = {
+                "count":       len(confs),
+                "confidences": confs,
+                "boxes":       data.get("boxes", []),
+            }
+
+        
+        with detection_lock:
+            if camera_id not in latest_detections:
+                latest_detections[camera_id] = {}
+            latest_detections[camera_id]["detected"]  = parsed.get("detected", False)
+            latest_detections[camera_id]["objects"]   = processed_objects
+            latest_detections[camera_id]["timestamp"] = datetime.now().isoformat()
+
+        
+        if parsed.get("detected") and processed_objects:
+            print(f"🚨 WEAPON DETECTED on camera {camera_id}!")
+
+            
+            current_frame = None
+            if camera_id in frame_locks:
+                with frame_locks[camera_id]:
+                    if latest_raw_frames.get(camera_id) is not None:
+                        current_frame = latest_raw_frames[camera_id].copy()
+
+            def process_and_log():
+                for weapon_type, data in processed_objects.items():
+                    confs          = data.get("confidences", [])
+                    avg_confidence = sum(confs) / len(confs) if confs else 0.85
+
+                    image_bytes = None
+                    if current_frame is not None:
+                        drawn = draw_boxes_on_frame(
+                            current_frame.copy(), {weapon_type: data}
+                        )
+                        ok, enc = cv2.imencode(
+                            ".jpg", drawn, [int(cv2.IMWRITE_JPEG_QUALITY), 80]
+                        )
+                        if ok:
+                            image_bytes = enc.tobytes()
+
+                    result = process_system_detection(
+                        camera_id, weapon_type, avg_confidence, image_bytes
+                    )
+                    if result.get("is_new"):
+                        print(f"  → Logged detection #{result['detection_id']}")
+                        if result.get("incident_id"):
+                            with detection_lock:
+                                latest_detections.setdefault(camera_id, {})[
+                                    "latest_incident_id"
+                                ] = result["incident_id"]
+                                
+            
+            threading.Thread(target=process_and_log, daemon=True).start()
+        else:
+            print("✓ No threats detected")
+
+    except json.JSONDecodeError as e:
+        print(f"Bad JSON: {e}")
+    except Exception as e:
+        print(f"Error in on_message: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+
+
+def get_latest_detection(camera_id=None):
+    with detection_lock:
+        if not latest_detections:
+            return {
+                "detected": False, "objects": {}, "timestamp": None, "latest_incident_id": None
+            }
+
+        if camera_id is not None:
+            det = latest_detections.get(camera_id, {})
+            return {
+                "detected":          det.get("detected", False),
+                "objects":           det.get("objects", {}),
+                "timestamp":         det.get("timestamp"),
+                "latest_incident_id": det.get("latest_incident_id"),
+            }
+        else:
+            
+            valid_dets = [d for d in latest_detections.values() if d.get("timestamp")]
+            if valid_dets:
+                newest = max(valid_dets, key=lambda x: x["timestamp"])
+                return {
+                    "detected":          newest.get("detected", False),
+                    "objects":           newest.get("objects", {}),
+                    "timestamp":         newest.get("timestamp"),
+                    "latest_incident_id": newest.get("latest_incident_id"),
+                }
+            
+            return {
+                "detected": False, "objects": {}, "timestamp": None, "latest_incident_id": None
+            }
+
+
+def generate(camera_id=1):
+    
+    start_capture_threads()   
+
+    while True:
+        frame_copy = None
+        if camera_id in frame_locks:
+            with frame_locks[camera_id]:
+                if latest_raw_frames.get(camera_id) is not None:
+                    frame_copy = latest_raw_frames[camera_id].copy()
+
+        if frame_copy is None:
+            time.sleep(0.1)
+            continue
+
+        with detection_lock:
+            det = latest_detections.get(camera_id, {}).copy()
+
+        if det.get("detected", False):
+            frame_copy = draw_boxes_on_frame(frame_copy, det.get("objects", {}))
+
+        ok, encoded = cv2.imencode(
+            ".jpg", frame_copy, [int(cv2.IMWRITE_JPEG_QUALITY), 70]
+        )
+        if not ok:
+            continue
+
+        yield (
+            b"--frame\r\n"
+            b"Content-Type: image/jpeg\r\n\r\n"
+            + encoded.tobytes()
+            + b"\r\n"
+        )
+        time.sleep(0.06)   
+
+
+
+
+def start_mqtt_client():
+    global mqtt_client
+
+    
+    start_capture_threads()
+
+    if mqtt_client is not None:
+        return
+
+    mqtt_client = paho.Client(client_id="", userdata=None, protocol=paho.MQTTv5)
+    mqtt_client.on_connect = on_connect
+    mqtt_client.on_message = on_message
+    mqtt_client.tls_set(tls_version=mqtt.client.ssl.PROTOCOL_TLS)
+    mqtt_client.username_pw_set(
+        "hivemq.webclient.1757927568300", "r$i.g1>23O5TMdLAcp:H"
+    )
+
+    try:
+        mqtt_client.connect(
+            "fd2249eedb6c43fdbf9e9d318ab38fe4.s1.eu.hivemq.cloud", 8883
+        )
+        mqtt_client.loop_start()
+        mqtt_client.subscribe("#", qos=0)
+        print("✅ MQTT client connected — subscribed to all topics (#)")
+    except Exception as e:
+        print(f"❌ MQTT connect failed: {e}")

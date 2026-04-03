@@ -44,6 +44,7 @@
       @close="closeModal"
       @update-status="updateStatus"
       @view-image="openImageFullscreen"
+      @delete="deleteIncident"
     />
 
     <ImageModal
@@ -85,8 +86,8 @@ const filters = ref({
   days: 7,
   startDate: getDateDaysAgo(7),
   endDate: new Date().toISOString().split('T')[0],
-  startTime: '',  // NEW: Time filter
-  endTime: ''     // NEW: Time filter
+  startTime: '',  
+  endTime: ''     
 })
 
 const sortColumn = ref('detected_at')
@@ -130,18 +131,18 @@ const filteredIncidents = computed(() => {
     })
   }
   
-  // NEW: Filter by time of day
+  
   if (filters.value.startTime || filters.value.endTime) {
     filtered = filtered.filter(incident => {
       try {
-        const incidentTime = new Date(incident.detected_at).toTimeString().slice(0, 5) // HH:MM format
+        const incidentTime = new Date(incident.detected_at).toTimeString().slice(0, 5) 
         
         if (filters.value.startTime && filters.value.endTime) {
           if (filters.value.startTime <= filters.value.endTime) {
-            // Normal range (e.g., 09:00 to 17:00)
+            
             return incidentTime >= filters.value.startTime && incidentTime <= filters.value.endTime
           } else {
-            // Overnight range (e.g., 22:00 to 06:00)
+            
             return incidentTime >= filters.value.startTime || incidentTime <= filters.value.endTime
           }
         } else if (filters.value.startTime) {
@@ -253,7 +254,7 @@ async function loadIncidents() {
     if (filters.value.status) url += `&status=${filters.value.status}`
     if (filters.value.officer) url += `&assigned_to=${filters.value.officer}`
     
-    // NEW: Add time filter parameters
+    
     if (filters.value.startTime) url += `&start_time=${filters.value.startTime}`
     if (filters.value.endTime) url += `&end_time=${filters.value.endTime}`
     
@@ -326,6 +327,29 @@ async function updateStatus(newStatus, actionData) {
     }
   } catch (error) {
     console.error('Could not update incident:', error)
+    alert('Network error. Please try again.')
+  }
+}
+
+async function deleteIncident(incidentId) {
+  try {
+    const res = await fetch(`/api/incidents/${incidentId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${props.token}`
+      }
+    })
+    
+    if (res.ok) {
+      await loadIncidents()
+      closeModal()
+      alert('Incident deleted successfully.')
+    } else {
+      const data = await res.json()
+      alert(data.error || 'Failed to delete incident')
+    }
+  } catch (error) {
+    console.error('Could not delete incident:', error)
     alert('Network error. Please try again.')
   }
 }

@@ -3,11 +3,10 @@ import jwt
 from functools import wraps
 from flask import request
 from config import SECRET_KEY, JWT_ALGO, JWT_EXPIRATION, pwd_ctx
-from models import get_user_by_username
 
 
 def create_token(username, user_id, role):
-    """Create JWT token"""
+    
     current_time = int(time.time())
     return jwt.encode({
         "sub": username,
@@ -19,7 +18,7 @@ def create_token(username, user_id, role):
 
 
 def verify_token(token: str):
-    """Verify JWT token"""
+    
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGO])
     except jwt.ExpiredSignatureError:
@@ -30,7 +29,7 @@ def verify_token(token: str):
 
 
 def get_token_from_request():
-    """Extract token from Authorization header"""
+    
     token = request.headers.get('Authorization')
     if not token or not token.startswith('Bearer '):
         return None
@@ -38,7 +37,7 @@ def get_token_from_request():
 
 
 def verify_password(plain_password, hashed_password):
-    """Verify password"""
+    
     try:
         return pwd_ctx.verify(plain_password, hashed_password)
     except Exception as e:
@@ -46,13 +45,9 @@ def verify_password(plain_password, hashed_password):
         return False
 
 
-def hash_password(password):
-    """Hash password"""
-    return pwd_ctx.hash(password)
-
 
 def token_required(f):
-    """Decorator to require valid token"""
+    
     @wraps(f)
     def decorated(*args, **kwargs):
         token = get_token_from_request()

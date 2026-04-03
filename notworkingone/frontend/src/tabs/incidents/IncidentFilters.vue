@@ -100,14 +100,14 @@
           :class="['toggle-btn', { active: viewMode === 'horizontal' }]"
           title="Card View"
         >
-          ⊞
+          ⊞ Cards
         </button>
         <button 
           @click="toggleView('vertical')" 
           :class="['toggle-btn', { active: viewMode === 'vertical' }]"
           title="List View"
         >
-          ☰
+          ☰ List
         </button>
       </div>
 
@@ -239,7 +239,7 @@ function getDateDaysAgo(days) {
   min-width: 140px;
 }
 
-/* Time filter with label */
+
 .time-filter-group {
   display: flex;
   align-items: center;

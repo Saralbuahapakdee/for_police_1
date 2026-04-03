@@ -202,7 +202,7 @@ function closeCreateModal() {
 async function createOfficer() {
   clearError()
   
-  // Validation
+ 
   if (!newOfficer.value.username || !newOfficer.value.password || !newOfficer.value.email) {
     error.value = 'Please fill all required fields (*)'
     return
@@ -462,7 +462,7 @@ async function deleteOfficer() {
   background: #c0392b;
 }
 
-/* Modal Styles */
+
 .modal-overlay {
   position: fixed;
   top: 0;

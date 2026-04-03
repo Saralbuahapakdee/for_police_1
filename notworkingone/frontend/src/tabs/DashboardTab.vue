@@ -191,6 +191,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { parseUTC, formatDate, formatTime } from '../services/dateUtils.js'
 
 const props = defineProps({
   token: String
@@ -204,11 +205,11 @@ const dateRangeType = ref('preset')
 const filterDays = ref(7)
 const isLoading = ref(false)
 
-// Sorting
+
 const sortColumn = ref('detection_date')
 const sortDirection = ref('desc')
 
-// Date range
+
 const today = new Date().toISOString().split('T')[0]
 const startDate = ref(getDateDaysAgo(7))
 const endDate = ref(today)
@@ -240,8 +241,6 @@ const cameraInfo = computed(() => {
 
 const totalDetections = computed(() => {
   if (!dashboardData.value) return 0
-  
-  // Use weaponTotals which already applies the weapon filter
   return weaponTotals.value.reduce((sum, weapon) => sum + weapon.total, 0)
 })
 
@@ -254,8 +253,6 @@ const dailyAverage = computed(() => {
 
 const avgConfidence = computed(() => {
   if (!dashboardData.value || weaponTotals.value.length === 0) return 0
-  
-  // Use weaponTotals which already applies the weapon filter
   const avg = weaponTotals.value.reduce((sum, w) => 
     sum + (w.avg_conf || 0), 0) / weaponTotals.value.length
   return Math.round(avg * 100)
@@ -263,14 +260,10 @@ const avgConfidence = computed(() => {
 
 const weaponTotals = computed(() => {
   if (!dashboardData.value) return []
-  
   let totals = dashboardData.value.weapon_totals
-  
-  // Filter by weapon type if selected
   if (filterWeapon.value) {
     totals = totals.filter(w => w.weapon_type === filterWeapon.value)
   }
-  
   return totals
 })
 
@@ -281,14 +274,10 @@ const maxDetections = computed(() => {
 
 const dailySummary = computed(() => {
   if (!dashboardData.value) return []
-  
   let summary = dashboardData.value.daily_summary
-  
-  // Filter by weapon type if selected
   if (filterWeapon.value) {
     summary = summary.filter(item => item.weapon_type === filterWeapon.value)
   }
-  
   return summary
 })
 
@@ -299,18 +288,15 @@ const sortedDailySummary = computed(() => {
     let aVal = a[sortColumn.value]
     let bVal = b[sortColumn.value]
     
-    // Handle date sorting
     if (sortColumn.value === 'detection_date') {
       aVal = new Date(aVal).getTime()
       bVal = new Date(bVal).getTime()
     }
     
-    // Handle numeric sorting
     if (typeof aVal === 'number' && typeof bVal === 'number') {
       return sortDirection.value === 'asc' ? aVal - bVal : bVal - aVal
     }
     
-    // Handle string sorting
     if (sortDirection.value === 'asc') {
       return aVal > bVal ? 1 : -1
     } else {
@@ -325,8 +311,6 @@ const dailyTimeline = computed(() => {
   if (!dashboardData.value) return []
   
   let summaryData = dashboardData.value.daily_summary
-  
-  // Filter by weapon type if selected
   if (filterWeapon.value) {
     summaryData = summaryData.filter(item => item.weapon_type === filterWeapon.value)
   }
@@ -334,16 +318,9 @@ const dailyTimeline = computed(() => {
   const timeline = {}
   summaryData.forEach(item => {
     if (!timeline[item.detection_date]) {
-      timeline[item.detection_date] = {
-        date: item.detection_date,
-        weapons: [],
-        total: 0
-      }
+      timeline[item.detection_date] = { date: item.detection_date, weapons: [], total: 0 }
     }
-    timeline[item.detection_date].weapons.push({
-      type: item.weapon_type,
-      count: item.total_detections
-    })
+    timeline[item.detection_date].weapons.push({ type: item.weapon_type, count: item.total_detections })
     timeline[item.detection_date].total += item.total_detections
   })
   
@@ -353,8 +330,6 @@ const dailyTimeline = computed(() => {
 onMounted(async () => {
   await loadCameras()
   await loadDashboard()
-  
-  // Auto-refresh every 30 seconds
   setInterval(loadDashboard, 30000)
 })
 
@@ -411,7 +386,6 @@ async function loadDashboard() {
     if (res.ok) {
       const data = await res.json()
       
-      // Filter by custom date range if needed
       if (dateRangeType.value === 'custom') {
         const start = new Date(startDate.value)
         start.setHours(0, 0, 0, 0)
@@ -439,10 +413,8 @@ function exportToCSV() {
     return
   }
   
-  // CSV Header
   let csv = 'Date,Camera,Location,Weapon Type,Total Detections,Average Confidence,First Detection,Last Detection\n'
   
-  // CSV Rows
   sortedDailySummary.value.forEach(item => {
     const row = [
       formatDate(item.detection_date),
@@ -454,12 +426,9 @@ function exportToCSV() {
       formatTime(item.first_detection),
       formatTime(item.last_detection)
     ]
-    
-    // Escape values that contain commas
     csv += row.map(val => `"${val}"`).join(',') + '\n'
   })
   
-  // Create and download file
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
   const url = window.URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -481,24 +450,6 @@ function formatWeaponName(weaponType) {
   return names[weaponType] || weaponType
 }
 
-function formatDate(dateString) {
-  if (!dateString) return 'N/A'
-  try {
-    return new Date(dateString).toLocaleDateString()
-  } catch {
-    return dateString
-  }
-}
-
-function formatTime(timeString) {
-  if (!timeString) return 'N/A'
-  try {
-    return new Date(timeString).toLocaleTimeString()
-  } catch {
-    return 'N/A'
-  }
-}
-
 function getConfidenceClass(score) {
   if (score >= 0.9) return 'high'
   if (score >= 0.75) return 'medium'
@@ -513,11 +464,7 @@ function getConfidenceLabel(score) {
 </script>
 
 <style scoped>
-.dashboard-tab {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
+.dashboard-tab { display: flex; flex-direction: column; gap: 20px; }
 
 .dashboard-header {
   display: flex;
@@ -531,19 +478,11 @@ function getConfidenceLabel(score) {
   gap: 15px;
 }
 
-.dashboard-header h2 {
-  color: #2c3e50;
-}
+.dashboard-header h2 { color: #2c3e50; }
 
-.dashboard-filters {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
+.dashboard-filters { display: flex; gap: 10px; flex-wrap: wrap; }
 
-.filter-select,
-.date-select,
-.date-input {
+.filter-select, .date-select, .date-input {
   padding: 8px 12px;
   border: 1px solid #ddd;
   border-radius: 6px;
@@ -552,360 +491,119 @@ function getConfidenceLabel(score) {
   cursor: pointer;
 }
 
-.date-input {
-  min-width: 140px;
-}
+.date-input { min-width: 140px; }
 
 .export-btn {
-  padding: 6px 12px;
-  background: #27ae60;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 0.95rem;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
+  padding: 6px 12px; background: #27ae60; color: white; border: none;
+  border-radius: 6px; font-size: 0.95rem; cursor: pointer; transition: background-color 0.3s ease;
 }
-
-.export-btn:hover {
-  background: #219a52;
-}
+.export-btn:hover { background: #219a52; }
 
 .refresh-btn {
-  padding: 6px 12px;
-  background: #4a90e2;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 0.95rem;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
+  padding: 6px 12px; background: #4a90e2; color: white; border: none;
+  border-radius: 6px; font-size: 0.95rem; cursor: pointer; transition: background-color 0.3s ease;
 }
-
-.refresh-btn:hover {
-  background: #357ab7;
-}
+.refresh-btn:hover { background: #357ab7; }
 
 .loading-state {
-  background: white;
-  padding: 60px;
-  border-radius: 12px;
-  text-align: center;
-  color: #7f8c8d;
-  font-style: italic;
+  background: white; padding: 60px; border-radius: 12px; text-align: center;
+  color: #7f8c8d; font-style: italic;
 }
 
-.dashboard-content {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
+.dashboard-content { display: flex; flex-direction: column; gap: 20px; }
 
-.summary-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 20px;
-}
+.summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
 
 .summary-card {
-  background: white;
-  padding: 25px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  text-align: center;
+  background: white; padding: 25px; border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); text-align: center;
 }
-
 .summary-card h4 {
-  color: #7f8c8d;
-  font-size: 0.9rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-bottom: 10px;
+  color: #7f8c8d; font-size: 0.9rem; text-transform: uppercase;
+  letter-spacing: 1px; margin-bottom: 10px;
 }
-
-.card-value {
-  font-size: 2rem;
-  font-weight: 700;
-  color: #2c3e50;
-  margin-bottom: 8px;
-}
-
-.card-subtitle {
-  font-size: 0.9rem;
-  color: #7f8c8d;
-}
-
+.card-value { font-size: 2rem; font-weight: 700; color: #2c3e50; margin-bottom: 8px; }
+.card-subtitle { font-size: 0.9rem; color: #7f8c8d; }
 .card-subtitle.high { color: #27ae60; }
 .card-subtitle.medium { color: #f39c12; }
 .card-subtitle.low { color: #e74c3c; }
 
-.charts-section {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 25px;
-}
+.charts-section { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
 
 .chart-container {
-  background: white;
-  padding: 25px;
-  border-radius: 12px;
+  background: white; padding: 25px; border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
+.chart-container h4 { color: #2c3e50; margin-bottom: 20px; }
 
-.chart-container h4 {
-  color: #2c3e50;
-  margin-bottom: 20px;
-}
+.no-data-chart { text-align: center; padding: 40px; color: #7f8c8d; font-style: italic; }
 
-.no-data-chart {
-  text-align: center;
-  padding: 40px;
-  color: #7f8c8d;
-  font-style: italic;
-}
-
-.weapon-chart {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-.weapon-bar {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.weapon-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.weapon-label {
-  font-weight: 600;
-  color: #2c3e50;
-}
-
-.weapon-confidence {
-  font-size: 0.85rem;
-  color: #7f8c8d;
-}
-
-.bar-container {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
+.weapon-chart { display: flex; flex-direction: column; gap: 15px; }
+.weapon-bar { display: flex; flex-direction: column; gap: 8px; }
+.weapon-info { display: flex; justify-content: space-between; align-items: center; }
+.weapon-label { font-weight: 600; color: #2c3e50; }
+.weapon-confidence { font-size: 0.85rem; color: #7f8c8d; }
+.bar-container { display: flex; align-items: center; gap: 10px; }
 .bar {
-  height: 24px;
-  background: linear-gradient(90deg, #4a90e2, #357ab7);
-  border-radius: 12px;
-  min-width: 4px;
-  transition: width 0.3s ease;
+  height: 24px; background: linear-gradient(90deg, #4a90e2, #357ab7);
+  border-radius: 12px; min-width: 4px; transition: width 0.3s ease;
 }
-
-.bar-value {
-  font-weight: 600;
-  color: #2c3e50;
-  min-width: 40px;
-}
+.bar-value { font-weight: 600; color: #2c3e50; min-width: 40px; }
 
 .timeline-chart {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-height: 400px;
-  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto;
 }
-
 .timeline-day {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  padding: 10px 0;
+  display: flex; align-items: center; gap: 15px; padding: 10px 0;
   border-bottom: 1px solid #ecf0f1;
 }
-
-.day-label {
-  min-width: 100px;
-  font-weight: 500;
-  color: #2c3e50;
-  font-size: 0.9rem;
-}
-
-.day-detections {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-}
-
-.weapon-dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  transition: transform 0.2s ease;
-}
-
-.weapon-dot:hover {
-  transform: scale(1.5);
-  cursor: help;
-}
-
+.day-label { min-width: 100px; font-weight: 500; color: #2c3e50; font-size: 0.9rem; }
+.day-detections { display: flex; align-items: center; gap: 8px; flex: 1; }
+.weapon-dot { width: 14px; height: 14px; border-radius: 50%; transition: transform 0.2s ease; }
+.weapon-dot:hover { transform: scale(1.5); cursor: help; }
 .weapon-dot.knife { background: #e73c8c; }
 .weapon-dot.pistol { background: #3638ca; }
 .weapon-dot.heavy_weapon { background: #8e44ad; }
-
-.day-total {
-  font-weight: 600;
-  color: #2c3e50;
-  margin-left: auto;
-  min-width: 40px;
-  text-align: right;
-}
+.day-total { font-weight: 600; color: #2c3e50; margin-left: auto; min-width: 40px; text-align: right; }
 
 .details-section {
-  background: white;
-  padding: 25px;
-  border-radius: 12px;
+  background: white; padding: 25px; border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
+.details-section h4 { color: #2c3e50; margin-bottom: 20px; }
 
-.details-section h4 {
-  color: #2c3e50;
-  margin-bottom: 20px;
-}
+.details-table-container { overflow-x: auto; max-height: 500px; overflow-y: auto; }
 
-.details-table-container {
-  overflow-x: auto;
-  max-height: 500px;
-  overflow-y: auto;
-}
-
-.details-table {
-  width: 100%;
-  border-collapse: collapse;
-}
+.details-table { width: 100%; border-collapse: collapse; }
 
 .details-table th {
-  background: #f8f9fa;
-  padding: 12px;
-  text-align: left;
-  font-weight: 600;
-  color: #2c3e50;
-  border-bottom: 2px solid #e0e0e0;
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  background: #f8f9fa; padding: 12px; text-align: left; font-weight: 600;
+  color: #2c3e50; border-bottom: 2px solid #e0e0e0; position: sticky; top: 0; z-index: 10;
 }
+.details-table th.sortable { cursor: pointer; user-select: none; transition: background-color 0.2s ease; }
+.details-table th.sortable:hover { background: #e9ecef; }
+.details-table th.sortable span { margin-left: 5px; color: #4a90e2; }
+.details-table td { padding: 12px; border-bottom: 1px solid #e9ecef; color: #2c3e50; }
+.details-table tr:hover { background: #f8f9fa; }
 
-.details-table th.sortable {
-  cursor: pointer;
-  user-select: none;
-  transition: background-color 0.2s ease;
-}
+.no-data { text-align: center; padding: 40px !important; color: #7f8c8d; font-style: italic; }
 
-.details-table th.sortable:hover {
-  background: #e9ecef;
-}
+.weapon-badge { padding: 4px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 600; display: inline-block; }
+.weapon-badge.knife { background: #ffebf4; color: #e73c8c; }
+.weapon-badge.pistol { background: #e0e2ff; color: #3638ca; }
+.weapon-badge.heavy_weapon { background: #f3e5f5; color: #9b59b6; }
 
-.details-table th.sortable span {
-  margin-left: 5px;
-  color: #4a90e2;
-}
+.confidence-badge { padding: 4px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 600; display: inline-block; }
+.confidence-badge.high { background: #d4edda; color: #27ae60; }
+.confidence-badge.medium { background: #fff3cd; color: #f39c12; }
+.confidence-badge.low { background: #f8d7da; color: #e74c3c; }
 
-.details-table td {
-  padding: 12px;
-  border-bottom: 1px solid #e9ecef;
-  color: #2c3e50;
-}
-
-.details-table tr:hover {
-  background: #f8f9fa;
-}
-
-.no-data {
-  text-align: center;
-  padding: 40px !important;
-  color: #7f8c8d;
-  font-style: italic;
-}
-
-.weapon-badge {
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  display: inline-block;
-}
-
-.weapon-badge.knife {
-  background: #ffebf4;
-  color: #e73c8c;
-}
-
-.weapon-badge.pistol {
-  background: #e0e2ff;
-  color: #3638ca;
-}
-
-.weapon-badge.heavy_weapon {
-  background: #f3e5f5;
-  color: #9b59b6;
-}
-
-.confidence-badge {
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  display: inline-block;
-}
-
-.confidence-badge.high {
-  background: #d4edda;
-  color: #27ae60;
-}
-
-.confidence-badge.medium {
-  background: #fff3cd;
-  color: #f39c12;
-}
-
-.confidence-badge.low {
-  background: #f8d7da;
-  color: #e74c3c;
-}
-
-@media (max-width: 1024px) {
-  .charts-section {
-    grid-template-columns: 1fr;
-  }
-}
+@media (max-width: 1024px) { .charts-section { grid-template-columns: 1fr; } }
 
 @media (max-width: 768px) {
-  .dashboard-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
-  .dashboard-filters {
-    flex-direction: column;
-    width: 100%;
-  }
-  
-  .filter-select,
-  .date-select,
-  .date-input,
-  .export-btn,
-  .refresh-btn {
-    width: 100%;
-  }
-  
-  .summary-cards {
-    grid-template-columns: 1fr 1fr;
-  }
+  .dashboard-header { flex-direction: column; align-items: flex-start; }
+  .dashboard-filters { flex-direction: column; width: 100%; }
+  .filter-select, .date-select, .date-input, .export-btn, .refresh-btn { width: 100%; }
+  .summary-cards { grid-template-columns: 1fr 1fr; }
 }
 </style>

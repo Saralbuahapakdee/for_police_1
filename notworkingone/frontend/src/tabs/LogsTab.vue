@@ -1,4 +1,3 @@
-<!-- src/tabs/LogsTab.vue - UPDATED with labeled time filter -->
 <template>
   <div class="logs-tab">
     <div class="logs-header">
@@ -185,6 +184,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { parseUTC, formatDateTime, formatDate } from '../services/dateUtils.js'
 
 const props = defineProps({
   token: String
@@ -202,11 +202,11 @@ const today = new Date().toISOString().split('T')[0]
 const startDate = ref(getDateDaysAgo(7))
 const endDate = ref(today)
 
-// Time filter
+
 const startTime = ref('')
 const endTime = ref('')
 
-// Sorting
+
 const sortColumn = ref('detection_time')
 const sortDirection = ref('desc')
 
@@ -216,7 +216,7 @@ function getDateDaysAgo(days) {
   return date.toISOString().split('T')[0]
 }
 
-// Filter logs by time of day
+
 const filteredLogs = computed(() => {
   if (!startTime.value && !endTime.value) {
     return logs.value
@@ -224,26 +224,29 @@ const filteredLogs = computed(() => {
   
   return logs.value.filter(log => {
     try {
-      const logTime = new Date(log.detection_time).toTimeString().slice(0, 5) // HH:MM format
+      const d = parseUTC(log.detection_time)
+      if (!d) return true
       
+      const hh = String(d.getHours()).padStart(2, '0')
+      const mm = String(d.getMinutes()).padStart(2, '0')
+      const logTime = `${hh}:${mm}`
+
       if (startTime.value && endTime.value) {
         if (startTime.value <= endTime.value) {
-          // Normal range (e.g., 09:00 to 17:00)
           return logTime >= startTime.value && logTime <= endTime.value
         } else {
-          // Overnight range (e.g., 22:00 to 06:00)
+          
           return logTime >= startTime.value || logTime <= endTime.value
         }
       } else if (startTime.value) {
         return logTime >= startTime.value
-      } else if (endTime.value) {
+      } else {
         return logTime <= endTime.value
       }
     } catch (error) {
       console.error('Error filtering log by time:', error)
       return true
     }
-    return true
   })
 })
 
@@ -269,8 +272,8 @@ const sortedLogs = computed(() => {
     let bVal = b[sortColumn.value]
     
     if (sortColumn.value === 'detection_time') {
-      aVal = new Date(aVal).getTime()
-      bVal = new Date(bVal).getTime()
+      aVal = (parseUTC(aVal) || new Date(0)).getTime()
+      bVal = (parseUTC(bVal) || new Date(0)).getTime()
     }
     
     if (sortColumn.value === 'confidence_score') {
@@ -353,7 +356,7 @@ async function loadLogs() {
     if (filterCamera.value) url += `&camera_id=${filterCamera.value}`
     if (filterWeapon.value) url += `&weapon_type=${filterWeapon.value}`
     
-    // Add time filter parameters
+    
     if (startTime.value) url += `&start_time=${startTime.value}`
     if (endTime.value) url += `&end_time=${endTime.value}`
     
@@ -371,7 +374,7 @@ async function loadLogs() {
         end.setHours(23, 59, 59, 999)
         
         logs.value = data.logs.filter(log => {
-          const logDate = new Date(log.detection_time)
+          const logDate = parseUTC(log.detection_time)
           return logDate >= start && logDate <= end
         })
       } else {
@@ -394,9 +397,9 @@ function exportToCSV() {
   let csv = 'Date,Time,Camera,Location,Weapon Type,Confidence,Detected By\n'
   
   sortedLogs.value.forEach(log => {
-    const date = new Date(log.detection_time)
-    const dateStr = date.toLocaleDateString()
-    const timeStr = date.toLocaleTimeString()
+    const d = parseUTC(log.detection_time)
+    const dateStr = d ? d.toLocaleDateString() : ''
+    const timeStr = d ? d.toLocaleTimeString() : ''
     const conf = Math.round(log.confidence_score * 100)
     
     csv += `"${dateStr}","${timeStr}","${log.camera_name}","${log.location}","${formatWeaponName(log.weapon_type)}",${conf}%,"${log.username}"\n`
@@ -420,16 +423,6 @@ function formatWeaponName(weaponType) {
     'heavy_weapon': 'Heavy Weapon'
   }
   return names[weaponType] || weaponType
-}
-
-function formatDateTime(dateTimeString) {
-  if (!dateTimeString) return 'N/A'
-  try {
-    const date = new Date(dateTimeString)
-    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
-  } catch {
-    return dateTimeString
-  }
 }
 
 function getConfidenceClass(score) {
@@ -481,7 +474,7 @@ function getConfidenceClass(score) {
   min-width: 130px;
 }
 
-/* Time filter with label */
+
 .time-filter-group {
   display: flex;
   align-items: center;
