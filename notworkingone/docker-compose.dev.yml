@@ -2,33 +2,27 @@ version: '3.8'
 
 services:
   backend:
-    image: tatanoi007/weapon-detection-backend:latest
+    build: ./backend
     ports:
       - "5001:5000"
-    environment:
-      - FLASK_ENV=production
-      - FLASK_APP=app.py
     volumes:
-      - incident-images:/app/incident_images
-    restart: unless-stopped
+      - ./backend:/app
+    environment:
+      - FLASK_ENV=development
+      - FLASK_APP=app.py
     networks:
       - weapon-detection-network
 
   frontend:
-    image: tatanoi007/weapon-detection-frontend:latest
+    build: ./frontend
     ports:
       - "80:5173"
     depends_on:
       - backend
-    restart: unless-stopped
     networks:
       - weapon-detection-network
     environment:
       - VITE_API_URL=http://backend:5000
-
-volumes:
-  incident-images:
-    driver: local
 
 networks:
   weapon-detection-network:
